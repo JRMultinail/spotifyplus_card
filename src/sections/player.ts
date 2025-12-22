@@ -1,23 +1,19 @@
 // lovelace card imports.
-import { css, html, TemplateResult, unsafeCSS } from 'lit';
+import { css, html, TemplateResult } from 'lit';
 import { customElement, property, state } from "lit/decorators.js";
 import { styleMap, StyleInfo } from 'lit-html/directives/style-map.js';
+import { mdiChevronDown, mdiPlaylistMusic } from '@mdi/js';
 
 // our imports - card components.
-import '../components/player-header';
-import '../components/player-body-audiobook';
-import '../components/player-body-idle';
 import '../components/player-body-queue';
-import '../components/player-body-show';
-import '../components/player-body-track';
 import '../components/player-controls';
 import '../components/player-volume';
+import '../components/player-progress';
 
 // our imports.
 import {
   BRAND_LOGO_IMAGE_BASE64,
   BRAND_LOGO_IMAGE_SIZE,
-  PLAYER_CONTROLS_BACKGROUND_COLOR_DEFAULT,
   PLAYER_CONTROLS_ICON_SIZE_DEFAULT
 } from '../constants';
 import { CardConfig } from '../types/card-config';
@@ -30,6 +26,7 @@ export class Player extends AlertUpdatesBase {
 
   // public state properties.
   @property({ attribute: false }) mediaContentId!: string;
+  @property({ attribute: false }) playerExpanded: boolean = true;
 
   // private storage.
   @state() private config!: CardConfig;
@@ -37,6 +34,27 @@ export class Player extends AlertUpdatesBase {
   /** MediaPlayer instance created from the configuration entity id. */
   private player!: MediaPlayer;
 
+  /**
+   * Handle minimize button click - navigate away from fullscreen player
+   */
+  private onMinimizeClick(): void {
+    // Dispatch minimize event - card.ts will find the first available non-Player section
+    this.dispatchEvent(new CustomEvent('minimize-player', {
+      bubbles: true,
+      composed: true
+    }));
+  }
+
+  /**
+   * Get the album artwork URL
+   */
+  private getArtworkUrl(): string {
+    const playerImage = this.player.attributes.entity_picture || this.player.attributes.entity_picture_local;
+    if (playerImage) {
+      return this.store.hass.hassUrl(playerImage);
+    }
+    return '';
+  }
 
   /**
    * Invoked on each update to perform rendering tasks. 
@@ -52,54 +70,91 @@ export class Player extends AlertUpdatesBase {
     // get idle state in case we are minimizing height.
     const isOffIdle = this.player.isPoweredOffOrIdle();
 
+    // Get artwork URL for the left panel
+    const artworkUrl = this.getArtworkUrl();
+
+    // Get track info
+    const trackTitle = this.player.attributes.media_title || 'No Media Playing';
+    const artistName = this.player.attributes.media_artist || '';
+
+    // Check if queue should be hidden
+    const hideQueue = this.config.playerControlsHidePlayQueue || false;
+
     // render html.
     return html`
       <div class="player-section-container" style=${this.stylePlayerSection()}>
-        <spc-player-header style=${this.stylePlayerHeader()}
-          class="player-section-header"
-          .store=${this.store}
-        ></spc-player-header>
-        <div class="player-section-body">
+        <!-- Left Panel: Artwork, Track Info, Controls -->
+        <div class="player-left-panel">
+          <!-- Minimize button -->
+          <div class="player-minimize-btn" @click=${() => this.onMinimizeClick()}>
+            <ha-icon-button .path=${mdiChevronDown}></ha-icon-button>
+          </div>
+          
+          <!-- Album Artwork -->
+          <div class="player-artwork-container">
+            <div class="player-artwork-blur" style=${this.styleArtworkBlur(artworkUrl)}></div>
+            <div class="player-artwork" style=${this.styleArtwork(artworkUrl)}></div>
+          </div>
+          
+          <!-- Track Info -->
+          <div class="player-track-info">
+            <div class="player-track-title">${trackTitle}</div>
+            <div class="player-track-artist">${artistName}</div>
+          </div>
+          
+          <!-- Progress Bar -->
+          <div class="player-progress-container">
+            <spc-player-progress .store=${this.store}></spc-player-progress>
+          </div>
+          
+          <!-- Playback Controls -->
+          <div class="player-controls-container">
+            <spc-player-controls 
+              class="player-controls-inline"
+              .store=${this.store}
+              .mediaContentId=${this.mediaContentId}
+              .hideQueue=${true}
+            ></spc-player-controls>
+          </div>
+          
+          <!-- Alerts -->
           <div class="player-alert-bgcolor">
             ${this.alertError ? html`<ha-alert alert-type="error" dismissable @alert-dismissed-clicked=${this.alertErrorClear}>${this.alertError}</ha-alert>` : ""}
             ${this.alertInfo ? html`<ha-alert alert-type="info" dismissable @alert-dismissed-clicked=${this.alertInfoClear}>${this.alertInfo}</ha-alert>` : ""}
           </div>
-          ${(() => {
-            if (isOffIdle && this.config.playerMinimizeOnIdle && this.config.height != "fill") {
-              return (html`<spc-player-body-idle class="player-section-body-content" style="display:block" .store=${this.store}></spc-player-body-idle>`);
-            } else if ((this.config.playerControlsHideFavorites || false) == true) {
-              return (html``); // if favorites disabled then we don't need to display favorites body.
-            } else if (this.player.attributes.sp_item_type == 'track') {
-              return (html`<spc-player-body-track class="player-section-body-content" .store=${this.store} .mediaContentId=${this.mediaContentId}></spc-player-body-track>`);
-            } else if (this.player.attributes.sp_item_type == 'podcast') {
-              return (html`<spc-player-body-show class="player-section-body-content" .store=${this.store} .mediaContentId=${this.mediaContentId}></spc-player-body-show>`);
-            } else if (this.player.attributes.sp_item_type == 'audiobook') {
-              return (html`<spc-player-body-audiobook class="player-section-body-content" .store=${this.store} .mediaContentId=${this.mediaContentId}></spc-player-body-audiobook>`);
-            } else {
-              return (html`<div class="player-section-body-content"></div>`);
-            }
-          })()}
-          ${(() => {
-            if (isOffIdle && this.config.playerMinimizeOnIdle && this.config.height != "fill") {
-              return (html``); // if idle then we don't need to display queue body.
-            } else  if ((this.config.playerControlsHidePlayQueue || false) == true) {
-              return (html``); // if play queue disabled then we don't need to display queue body.
-            } else if (this.player.attributes.sp_item_type == 'track') {
-              return (html`<spc-player-body-queue class="player-section-body-queue" .store=${this.store} .mediaContentId=${this.mediaContentId} id="elmPlayerBodyQueue"></spc-player-body-queue>`);
-            } else if (this.player.attributes.sp_item_type == 'podcast') {
-              return (html`<spc-player-body-queue class="player-section-body-queue" .store=${this.store} .mediaContentId=${this.mediaContentId} id="elmPlayerBodyQueue"></spc-player-body-queue>`);
-            } else if (this.player.attributes.sp_item_type == 'audiobook') {
-              return (html`<spc-player-body-queue class="player-section-body-queue" .store=${this.store} .mediaContentId=${this.mediaContentId} id="elmPlayerBodyQueue"></spc-player-body-queue>`);
-            } else {
-              return (html`<div class="player-section-body-queue"></div>`);
-            }
-          })()}
         </div>
-        <spc-player-controls style=${this.stylePlayerControls()}
-          class="player-section-controls"
-          .store=${this.store}
-          .mediaContentId=${this.mediaContentId}
-        ></spc-player-controls>
+        
+        <!-- Right Panel: Queue -->
+        ${!hideQueue ? html`
+          <div class="player-right-panel">
+            <div class="player-queue-header">
+              <span class="player-queue-title">UP NEXT</span>
+              <ha-icon-button 
+                .path=${mdiPlaylistMusic}
+                label="Queue"
+                class="player-queue-button"
+              ></ha-icon-button>
+            </div>
+            <div class="player-queue-content">
+              ${(() => {
+          if (isOffIdle && this.config.playerMinimizeOnIdle && this.config.height != "fill") {
+            return html`<div class="player-queue-empty">Player is idle</div>`;
+          } else if (this.player.attributes.sp_item_type == 'track' ||
+            this.player.attributes.sp_item_type == 'podcast' ||
+            this.player.attributes.sp_item_type == 'audiobook') {
+            return html`<spc-player-body-queue 
+                    class="player-queue-list" 
+                    .store=${this.store} 
+                    .mediaContentId=${this.mediaContentId} 
+                    id="elmPlayerBodyQueue"
+                  ></spc-player-body-queue>`;
+          } else {
+            return html`<div class="player-queue-empty">No items in queue</div>`;
+          }
+        })()}
+            </div>
+          </div>
+        ` : html``}
       </div>
     `;
   }
@@ -114,84 +169,280 @@ export class Player extends AlertUpdatesBase {
 
       .hoverable:focus,
       .hoverable:hover {
-        color: var(--dark-primary-color);
+        color: #1DB954;
+        transform: scale(1.05);
       }
 
       .hoverable:active {
-        color: var(--primary-color);
+        color: #1ed760;
+        transform: scale(0.95);
       }
 
+      /* Main container - two column layout for tablet */
       .player-section-container {
         display: grid;
-        grid-template-columns: 100%;
-        grid-template-rows: min-content auto min-content;
-        grid-template-areas:
-          'header'
-          'body'
-          'controls';
-        align-items: center;
-        background-position: center;
-        background-repeat: no-repeat;
-        background-size: var(--spc-player-background-size, var(--spc-player-background-size-default, 100% 100%));  /* PLAYER_BACKGROUND_IMAGE_SIZE_DEFAULT */
-        text-align: -webkit-center;
+        grid-template-columns: 1fr 1fr;
         height: 100%;
         width: 100%;
+        background-color: var(--spc-player-palette-darkmuted, #121212);
+        border-radius: 12px;
+        overflow: hidden;
+        position: relative;
       }
 
-      .player-section-header {
-        /* border: 1px solid red;      /* FOR TESTING CONTROL LAYOUT CHANGES */
-        grid-area: header;
-        background: linear-gradient(180deg, var(--spc-player-header-bg-color, ${unsafeCSS(PLAYER_CONTROLS_BACKGROUND_COLOR_DEFAULT)}) 30%, transparent 100%);
+      /* Left panel - artwork and controls - uses album art derived color */
+      .player-left-panel {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 1rem;
+        position: relative;
+        overflow: hidden;
+        background: linear-gradient(
+          180deg,
+          color-mix(in srgb, var(--spc-player-palette-muted, var(--spc-player-palette-darkmuted, #1a1a1a)) 60%, black) 0%,
+          color-mix(in srgb, var(--spc-player-palette-muted, var(--spc-player-palette-darkmuted, #1a1a1a)) 40%, black) 100%
+        );
+      }
+
+      /* Minimize button - top left corner */
+      .player-minimize-btn {
+        position: absolute;
+        top: 0.5rem;
+        left: 0.5rem;
+        z-index: 10;
+        color: #ffffff;
+        cursor: pointer;
+        opacity: 0.7;
+        transition: opacity 0.2s ease, transform 0.2s ease;
+        --mdc-icon-button-size: 40px;
+        --mdc-icon-size: 28px;
+      }
+
+      .player-minimize-btn:hover {
+        opacity: 1;
+        color: #1DB954;
+        transform: scale(1.1);
+      }
+
+      .player-minimize-btn ha-icon-button {
+        color: inherit;
+      }
+
+      /* Artwork container with blurred background */
+      .player-artwork-container {
+        position: relative;
+        width: 100%;
+        max-width: 400px;
+        aspect-ratio: 1 / 1;
+        margin: 2rem 0 1rem 0;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      /* Blurred background behind artwork */
+      .player-artwork-blur {
+        position: absolute;
+        inset: -30px;
+        background-size: cover;
+        background-position: center;
         background-repeat: no-repeat;
-        padding: 0.2rem;
+        filter: blur(40px) saturate(1.4) brightness(0.5);
+        transform: scale(1.2);
+        z-index: 0;
       }
 
-      .player-section-body {
-        /* border: 1px solid orange;   /* FOR TESTING CONTROL LAYOUT CHANGES */
-        grid-area: body;
+      /* Main artwork image */
+      .player-artwork {
+        position: relative;
+        width: 100%;
         height: 100%;
-        overflow: hidden;
-        padding: 0rem 0.5rem 0rem 0.5rem;
-        box-sizing: border-box;
-        background: transparent;
-      }
-
-      .player-section-body-content {
-        /* border: 1px solid yellow;   /* FOR TESTING CONTROL LAYOUT CHANGES */
-        height: inherit;
-        background: transparent;
-        overflow: hidden;
-        display: none;              /* don't display initially */
-        /* for fade-in, fade-out support */
-        transition: opacity 0.25s, display 0.25s;
-        transition-behavior: allow-discrete;    /* Note: be sure to write this after the shorthand */
-      }
-
-      .player-section-body-queue {
-        /* border: 1px solid yellow;   /* FOR TESTING CONTROL LAYOUT CHANGES */
-        height: inherit;
-        background: transparent;
-        overflow: hidden;
-        display: none;              /* don't display initially */
-        /* for fade-in, fade-out support */
-        transition: opacity 0.25s, display 0.25s;
-        transition-behavior: allow-discrete;    /* Note: be sure to write this after the shorthand */
-      }
-
-      .player-section-controls {
-        /* border: 1px solid blue;     /* FOR TESTING CONTROL LAYOUT CHANGES */
-        grid-area: controls;
-        overflow-y: auto;
-        background: linear-gradient(0deg, var(--spc-player-controls-bg-color, ${unsafeCSS(PLAYER_CONTROLS_BACKGROUND_COLOR_DEFAULT)}) 30%, transparent 100%);
+        background-size: contain;
+        background-position: center;
         background-repeat: no-repeat;
+        z-index: 1;
+        border-radius: 8px;
       }
 
-      /* have to set a background color for alerts due to parent background transparency. */
+      /* Track info section */
+      .player-track-info {
+        width: 100%;
+        max-width: 400px;
+        text-align: left;
+        padding: 1rem 0 0.5rem;
+        z-index: 1;
+      }
+
+      .player-track-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #ffffff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-bottom: 0.25rem;
+      }
+
+      .player-track-artist {
+        font-size: 1rem;
+        color: rgba(255, 255, 255, 0.7);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* Progress bar container */
+      .player-progress-container {
+        width: 100%;
+        max-width: 400px;
+        padding: 0.5rem 0;
+        z-index: 1;
+      }
+
+      /* Controls container */
+      .player-controls-container {
+        width: 100%;
+        max-width: 400px;
+        padding: 0.5rem 0;
+        z-index: 1;
+      }
+
+      .player-controls-inline {
+        --spc-player-controls-bg-color: transparent;
+      }
+
+      /* Right panel - queue - uses darker version of album art color */
+      .player-right-panel {
+        display: flex;
+        flex-direction: column;
+        background: color-mix(in srgb, var(--spc-player-palette-muted, var(--spc-player-palette-darkmuted, #1a1a1a)) 35%, black);
+        border-left: 1px solid rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+      }
+
+      .player-queue-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background: color-mix(in srgb, var(--spc-player-palette-muted, var(--spc-player-palette-darkmuted, #1a1a1a)) 30%, black);
+      }
+
+      .player-queue-title {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #ffffff;
+        letter-spacing: 0.05em;
+      }
+
+      .player-queue-button {
+        --mdc-icon-button-size: 36px;
+        --mdc-icon-size: 20px;
+        color: rgba(255, 255, 255, 0.7);
+      }
+
+      .player-queue-button:hover {
+        color: #ffffff;
+      }
+
+      .player-queue-content {
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+        scrollbar-width: thin;
+        scrollbar-color: #4d4d4d transparent;
+      }
+
+      .player-queue-content::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .player-queue-content::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      .player-queue-content::-webkit-scrollbar-thumb {
+        background: #4d4d4d;
+        border-radius: 4px;
+      }
+
+      .player-queue-list {
+        display: block;
+        padding: 0.5rem 0;
+      }
+
+      .player-queue-empty {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: rgba(255, 255, 255, 0.5);
+        font-size: 0.875rem;
+      }
+
+      /* Alert styling */
       .player-alert-bgcolor {
-        background-color: rgba(var(--rgb-card-background-color), 0.92);
+        position: absolute;
+        bottom: 1rem;
+        left: 1rem;
+        right: 1rem;
+        background-color: rgba(18, 18, 18, 0.95);
+        border-radius: 8px;
+        z-index: 100;
+      }
+
+      /* Responsive: single column on smaller screens */
+      @media (max-width: 768px) {
+        .player-section-container {
+          grid-template-columns: 1fr;
+          grid-template-rows: 1fr auto;
+        }
+
+        .player-right-panel {
+          max-height: 40%;
+          border-left: none;
+          border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .player-artwork-container {
+          max-width: 280px;
+          margin: 1rem 0;
+        }
+
+        .player-track-info,
+        .player-progress-container,
+        .player-controls-container {
+          max-width: 280px;
+        }
       }
 
     `;
+  }
+
+  /**
+   * Returns a style for the artwork blur background.
+   */
+  private styleArtworkBlur(artworkUrl: string) {
+    const styleInfo: StyleInfo = <StyleInfo>{};
+    if (artworkUrl) {
+      styleInfo['background-image'] = `url(${artworkUrl})`;
+    }
+    return styleMap(styleInfo);
+  }
+
+  /**
+   * Returns a style for the main artwork.
+   */
+  private styleArtwork(artworkUrl: string) {
+    const styleInfo: StyleInfo = <StyleInfo>{};
+    if (artworkUrl) {
+      styleInfo['background-image'] = `url(${artworkUrl})`;
+    } else {
+      styleInfo['background-image'] = `url(${BRAND_LOGO_IMAGE_BASE64})`;
+      styleInfo['background-size'] = BRAND_LOGO_IMAGE_SIZE;
+    }
+    return styleMap(styleInfo);
   }
 
 
@@ -203,277 +454,44 @@ export class Player extends AlertUpdatesBase {
     // build style info object.
     const styleInfo: StyleInfo = <StyleInfo>{};
 
-    // get player states.
-    const isOff = this.player.isPoweredOffOrUnknown();
-    const isIdle = this.player.isIdle();
-
-    // initialize default player background image and colors.
-    let backgroundImageUrl: string | undefined;
-    let isBackgroundImageBrandLogo: boolean = false;
-
-    // get various image source settings.
-    const configImageDefault = this.config.customImageUrls?.['default'];
-    const configImagePlayerBg = this.config.customImageUrls?.['playerBackground'];
-    const configImagePlayerBgIdle = this.config.customImageUrls?.['playerIdleBackground'];
-    const configImagePlayerBgOff = this.config.customImageUrls?.['playerOffBackground'];
-
-    // get current media player image and media content id values.
-    let playerMediaContentId:string | undefined = undefined;
-    let playerImage:string | undefined = undefined;
+    // get current media player image for background color extraction
+    let playerImage: string | undefined = undefined;
     if (this.store.player) {
-      playerMediaContentId = this.store.player.attributes.media_content_id;
       playerImage = (this.store.player.attributes.entity_picture || this.store.player.attributes.entity_picture_local);
       if (playerImage) {
-        // get fully-qualified url of the player image since we are using entity_picture attribute.
         playerImage = this.store.hass.hassUrl(playerImage);
       }
     }
 
-    //console.log("%cstylePlayerSection - styling player section:\n- isOff = %s\n- isIdle = %s\n- playerImage = %s\n- playerMinimizeOnIdle = %s\n- configImageDefault = %s\n- configImagePlayerBg = %s",
-    //  "color:red",
-    //  JSON.stringify(isOff),
-    //  JSON.stringify(isIdle),
-    //  JSON.stringify(playerImage),
-    //  JSON.stringify(this.config.playerMinimizeOnIdle),
-    //  JSON.stringify(configImageDefault),
-    //  JSON.stringify(configImagePlayerBg),
-    //);
-
-    // is specific background size specified in config? if so, then use it.
-    // otherwise, do not stretch the background image if in fill mode.
-    if (this.config.playerBackgroundImageSize) {
-      styleInfo['--spc-player-background-size'] = `${this.config.playerBackgroundImageSize}`;
-    } else if (this.config.width == 'fill') {
-      styleInfo['--spc-player-background-size-default'] = 'contain';
-    }
-
-    // set player background image to display.
-    if (isOff) {
-
-      // set image to display for OFF state.
-      this.store.card.playerMediaContentId = "configImagePlayerBgOff"
-      if ((configImagePlayerBgOff || "").toLowerCase() == "none") {
-        // force no image.
-        styleInfo['background-image'] = undefined;
-      } else if (configImagePlayerBgOff) {
-        // image specified in card config.
-        styleInfo['background-image'] = `url(${configImagePlayerBgOff})`;
-        backgroundImageUrl = configImagePlayerBgOff;
-      } else if (this.config.playerMinimizeOnIdle) {
-        // player is minimized, so use theme file image if defined (do not display brand logo).
-        styleInfo['background-image'] = `var(--spc-player-background-image-off)`;
-      } else {
-        // player is not minimized, so use theme file image if defined; otherwise, use brand logo.
-        styleInfo['background-image'] = `var(--spc-player-background-image-off, url(${BRAND_LOGO_IMAGE_BASE64}))`;
-        styleInfo['--spc-player-background-size-default'] = `${BRAND_LOGO_IMAGE_SIZE}`;
-        isBackgroundImageBrandLogo = true;
-      }
-
-      // set image size.
-      if (this.config.playerBackgroundImageSize) {
-        styleInfo['--spc-player-background-size'] = `${this.config.playerBackgroundImageSize}`;
-      }
-
-    } else if (isIdle) {
-
-      // set image to display for IDLE state.
-      this.store.card.playerMediaContentId = "configImagePlayerBgIdle"
-      if ((configImagePlayerBgIdle || "").toLowerCase() == "none") {
-        // force no image.
-        styleInfo['background-image'] = undefined;
-      } else if (configImagePlayerBgIdle) {
-        // image specified in card config.
-        styleInfo['background-image'] = `url(${configImagePlayerBgIdle})`;
-        backgroundImageUrl = configImagePlayerBgIdle;
-      } else if (this.config.playerMinimizeOnIdle) {
-        // player is minimized, so use theme file image if defined (do not display brand logo).
-        styleInfo['background-image'] = `var(--spc-player-background-image-off)`;
-      } else {
-        // player is not minimized, so use theme file image if defined; otherwise, use brand logo.
-        styleInfo['background-image'] = `var(--spc-player-background-image-off, url(${BRAND_LOGO_IMAGE_BASE64}))`;
-        styleInfo['--spc-player-background-size-default'] = `${BRAND_LOGO_IMAGE_SIZE}`;
-        isBackgroundImageBrandLogo = true;
-      }
-
-      // set image size.
-      if (this.config.playerBackgroundImageSize) {
-        styleInfo['--spc-player-background-size'] = `${this.config.playerBackgroundImageSize}`;
-      }
-
-    } else if (configImagePlayerBg) {
-
-      // use configured player background image (static image, does not change).
-      this.store.card.playerMediaContentId = "configImagePlayerBg"
-      if ((configImagePlayerBg || "").toLowerCase() == "none") {
-        // force no image.
-        styleInfo['background-image'] = undefined;
-      } else if (configImagePlayerBg) {
-        // image specified in card config.
-        styleInfo['background-image'] = `url(${configImagePlayerBg})`;
-        backgroundImageUrl = configImagePlayerBg;
-      }
-
-    } else if (playerImage) {
-
-      // use currently playing artwork background image; image changes with the track.
-      // note that theming variable will override this value if specified.
-      this.store.card.playerMediaContentId = playerMediaContentId;
-      backgroundImageUrl = playerImage;
-      styleInfo['background-image'] = `var(--spc-player-background-image, url(${playerImage}))`;
-
-    } else if (configImageDefault) {
-
-      // use configured default background image.
-      this.store.card.playerMediaContentId = "configImageDefault"
-      backgroundImageUrl = configImageDefault;
-      styleInfo['background-image'] = `url(${configImageDefault}`;
-
-    } else {
-
-      // set image to display for all other possibilities.
-      this.store.card.playerMediaContentId = "BRAND_LOGO_IMAGE_BASE64"
-      if (this.config.playerMinimizeOnIdle) {
-        // player is minimized, so use theme file image if defined (do not display brand logo).
-        styleInfo['background-image'] = `var(--spc-player-background-image-off)`;
-      } else {
-        // player is not minimized, so use theme file image if defined; otherwise, use brand logo.
-        styleInfo['background-image'] = `var(--spc-player-background-image-off, url(${BRAND_LOGO_IMAGE_BASE64}))`;
-        styleInfo['--spc-player-background-size-default'] = `${BRAND_LOGO_IMAGE_SIZE}`;
-        isBackgroundImageBrandLogo = true;
-      }
-
-      // set image size.
-      if (this.config.playerBackgroundImageSize) {
-        styleInfo['--spc-player-background-size'] = `${this.config.playerBackgroundImageSize}`;
-      }
-
-    }
+    // Store player image for vibrant color extraction
+    this.store.card.playerImage = playerImage;
+    this.store.card.playerMediaContentId = this.store.player.attributes.media_content_id;
 
     // set player controls and volume controls icon size.
-    let playerControlsBackgroundColor = this.config.playerControlsBackgroundColor;
-    const playerControlsColor = this.config.playerControlsColor;
     const playerControlsIconSize = this.config.playerControlsIconSize || PLAYER_CONTROLS_ICON_SIZE_DEFAULT;
-    let playerControlsIconColor = this.config.playerControlsIconColor;
+    const playerControlsIconColor = this.config.playerControlsIconColor;
     const playerControlsIconToggleColor = this.config.playerControlsIconToggleColor;
-    let playerHeaderBackgroundColor = this.config.playerHeaderBackgroundColor;
-    let playerHeaderTitle1Color = this.config.playerHeaderTitle1Color;
-    const playerHeaderTitle1FontSize = this.config.playerHeaderTitle1FontSize;
-    let playerHeaderTitle2Color = this.config.playerHeaderTitle2Color;
-    const playerHeaderTitle2FontSize = this.config.playerHeaderTitle2FontSize;
-    let playerHeaderTitle3Color = this.config.playerHeaderTitle3Color;
-    const playerHeaderTitle3FontSize = this.config.playerHeaderTitle3FontSize;
-    const playerMinimizedTitleColor = this.config.playerMinimizedTitleColor;
-    const playerMinimizedTitleFontSize = this.config.playerMinimizedTitleFontSize;
     const playerProgressSliderColor = this.config.playerProgressSliderColor;
     const playerProgressLabelColor = this.config.playerProgressLabelColor;
-    const playerProgressLabelPaddingLR = this.config.playerProgressLabelPaddingLR;
     const playerVolumeSliderColor = this.config.playerVolumeSliderColor;
-    let playerVolumeLabelColor = this.config.playerVolumeLabelColor;
 
-    // if brand logo image is in use, then default the header and controls area
-    // background to transparent, and all labels to the primary text color (since the 
-    // brand logo image is transparent).
-    // this will cause labels and controls to render on a white (logo) background.
-    if (isBackgroundImageBrandLogo) {
-      playerControlsBackgroundColor = playerControlsBackgroundColor || `transparent`;
-      playerControlsIconColor = playerControlsIconColor || 'var(--primary-text-color, PLAYER_CONTROLS_BACKGROUND_COLOR_DEFAULT)'
-      playerHeaderBackgroundColor = playerHeaderBackgroundColor || `transparent`;
-      playerHeaderTitle1Color = playerHeaderTitle1Color || 'var(--primary-text-color, PLAYER_CONTROLS_BACKGROUND_COLOR_DEFAULT)'
-      playerHeaderTitle2Color = playerHeaderTitle2Color || 'var(--primary-text-color, PLAYER_CONTROLS_BACKGROUND_COLOR_DEFAULT)'
-      playerHeaderTitle3Color = playerHeaderTitle3Color || 'var(--primary-text-color, PLAYER_CONTROLS_BACKGROUND_COLOR_DEFAULT)'
-      playerVolumeLabelColor = playerVolumeLabelColor || 'var(--primary-text-color, PLAYER_CONTROLS_BACKGROUND_COLOR_DEFAULT)'
-    }
-
-    // build style info object.
-    this.store.card.playerImage = backgroundImageUrl;
-    if (playerControlsBackgroundColor)
-      styleInfo['--spc-player-controls-bg-color'] = `${playerControlsBackgroundColor} `;
-    if (playerControlsColor)
-      styleInfo['--spc-player-controls-color'] = `${playerControlsColor}`;
+    // build style info object for controls.
     if (playerControlsIconToggleColor)
       styleInfo['--spc-player-controls-icon-toggle-color'] = `${playerControlsIconToggleColor}`;
     if (playerControlsIconColor)
       styleInfo['--spc-player-controls-icon-color'] = `${playerControlsIconColor}`;
     if (playerControlsIconSize)
       styleInfo['--spc-player-controls-icon-size'] = `${playerControlsIconSize}`;
-    styleInfo['--spc-player-controls-icon-button-size'] = `var(--spc-player-controls-icon-size, ${PLAYER_CONTROLS_ICON_SIZE_DEFAULT}) + 0.75rem`;
-    if (playerHeaderBackgroundColor)
-      styleInfo['--spc-player-header-bg-color'] = `${playerHeaderBackgroundColor}`;
-    if (playerHeaderTitle1Color)
-      styleInfo['--spc-player-header-title1-color'] = `${playerHeaderTitle1Color}`;
-    if (playerHeaderTitle1FontSize)
-      styleInfo['--spc-player-header-title1-font-size'] = `${playerHeaderTitle1FontSize}`;
-    if (playerHeaderTitle2Color)
-      styleInfo['--spc-player-header-title2-color'] = `${playerHeaderTitle2Color}`;
-    if (playerHeaderTitle2FontSize)
-      styleInfo['--spc-player-header-title2-font-size'] = `${playerHeaderTitle2FontSize}`;
-    if (playerHeaderTitle3Color)
-      styleInfo['--spc-player-header-title3-color'] = `${playerHeaderTitle3Color}`;
-    if (playerHeaderTitle3FontSize)
-      styleInfo['--spc-player-header-title3-font-size'] = `${playerHeaderTitle3FontSize}`;
-    if (playerMinimizedTitleColor)
-      styleInfo['--spc-player-minimized-title-color'] = `${playerMinimizedTitleColor}`;
-    if (playerMinimizedTitleFontSize)
-      styleInfo['--spc-player-minimized-title-font-size'] = `${playerMinimizedTitleFontSize}`;
+    styleInfo['--spc-player-controls-icon-button-size'] = `calc(var(--spc-player-controls-icon-size, ${PLAYER_CONTROLS_ICON_SIZE_DEFAULT}) + 0.75rem)`;
     if (playerProgressLabelColor)
       styleInfo['--spc-player-progress-label-color'] = `${playerProgressLabelColor}`;
-    if (playerProgressLabelPaddingLR)
-      styleInfo['--spc-player-progress-label-padding-lr'] = `${playerProgressLabelPaddingLR}`;
     if (playerProgressSliderColor)
       styleInfo['--spc-player-progress-slider-color'] = `${playerProgressSliderColor}`;
-    if (playerVolumeLabelColor)
-      styleInfo['--spc-player-volume-label-color'] = `${playerVolumeLabelColor}`;
     if (playerVolumeSliderColor)
       styleInfo['--spc-player-volume-slider-color'] = `${playerVolumeSliderColor}`;
 
     return styleMap(styleInfo);
 
-  }
-
-
-  /**
-   * Returns an element style for the header portion of the form.
-   */
-  private stylePlayerHeader() {
-
-    // build style info object.
-    const styleInfo: StyleInfo = <StyleInfo>{};
-
-    // show / hide the header.
-    if (this.config.playerHeaderHide || false)
-      styleInfo['display'] = `none`;
-
-    // adjust css styling for minimized player format.
-    if (this.config.playerMinimizeOnIdle && this.store.player.isPoweredOffOrIdle()) {
-      if (this.config.height != 'fill') {
-        styleInfo['display'] = `none`;
-      }
-    }
-
-    return styleMap(styleInfo);
-  }
-
-
-  /**
-   * Returns an element style for the player controls portion of the form.
-   */
-  private stylePlayerControls() {
-
-    // build style info object.
-    const styleInfo: StyleInfo = <StyleInfo>{};
-
-    // show / hide the media controls.
-    if (this.config.playerControlsHide || false)
-      styleInfo['display'] = `none`;
-
-    // adjust css styling for minimized player format.
-    if (this.config.playerMinimizeOnIdle && this.store.player.isPoweredOffOrIdle()) {
-      if (this.config.height != 'fill') {
-        styleInfo['justify-items'] = `flex-start`;
-      }
-    }
-
-    return styleMap(styleInfo);
   }
 
 }

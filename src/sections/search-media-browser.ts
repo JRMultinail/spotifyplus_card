@@ -251,7 +251,7 @@ export class SearchBrowser extends FavBrowserBase {
       <div class="media-browser-section" style=${this.styleMediaBrowser()}>
         ${title ? html`<div class="media-browser-section-title">${title}</div>` : html``}
         ${subtitle ? html`<div class="media-browser-section-subtitle">${subtitle}</div>` : html``}
-        <div class="search-media-browser-controls">
+        <div class="search-media-browser-controls" style=${this.styleMediaBrowserControls()}>
           ${!(this.isActionsVisible || false) ? html`` : html`${this.btnHideActionsHtml}`}
           ${searchMediaTypeHtml}
           ${(this.isFilterCriteriaVisible) ? html`

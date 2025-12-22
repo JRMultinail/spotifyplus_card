@@ -10,11 +10,9 @@ import {
   mdiHistory,
   mdiMicrophone,
   mdiMusic,
-  mdiPlayCircle,
   mdiPlaylistPlay,
   mdiPodcast,
-  mdiSearchWeb,
-  mdiSpeaker,
+  mdiMagnify,
 } from '@mdi/js';
 
 // our imports.
@@ -37,24 +35,18 @@ export class Footer extends LitElement {
   */
   protected render(): TemplateResult | void {
 
+    // Note: Player icon removed - floating now-playing bar handles player navigation
     return html`
       <ha-icon-button
-        .path=${mdiPlayCircle}
-        label="Player"
-        @click=${() => this.onSectionClick(Section.PLAYER)}
-        selected=${this.getSectionSelected(Section.PLAYER)}
-        hide=${this.getSectionEnabled(Section.PLAYER)}
-      ></ha-icon-button>
-      <ha-icon-button
-        .path=${mdiSpeaker}
-        label="Devices"
-        @click=${() => this.onSectionClick(Section.DEVICES)}
-        selected=${this.getSectionSelected(Section.DEVICES)}
-        hide=${this.getSectionEnabled(Section.DEVICES)}
+        .path=${mdiMagnify}
+        label='Search Spotify'
+        @click=${() => this.onSectionClick(Section.SEARCH_MEDIA)}
+        selected=${this.getSectionSelected(Section.SEARCH_MEDIA)}
+        hide=${this.getSectionEnabled(Section.SEARCH_MEDIA)}
       ></ha-icon-button>
       <ha-icon-button
         .path=${mdiBookmarkMusicOutline}
-        label="User Presets"
+        label="Recommended"
         @click=${() => this.onSectionClick(Section.USERPRESETS)}
         selected=${this.getSectionSelected(Section.USERPRESETS)}
         hide=${this.getSectionEnabled(Section.USERPRESETS)}
@@ -122,13 +114,6 @@ export class Footer extends LitElement {
         selected=${this.getSectionSelected(Section.EPISODE_FAVORITES)}
         hide=${this.getSectionEnabled(Section.EPISODE_FAVORITES)}
       ></ha-icon-button>
-      <ha-icon-button
-        .path=${mdiSearchWeb}
-        label='Search Spotify'
-        @click=${() => this.onSectionClick(Section.SEARCH_MEDIA)}
-        selected=${this.getSectionSelected(Section.SEARCH_MEDIA)}
-        hide=${this.getSectionEnabled(Section.SEARCH_MEDIA)}
-      ></ha-icon-button>
     `;
   }
 
@@ -138,12 +123,37 @@ export class Footer extends LitElement {
    */
   static get styles() {
     return css`
+      :host {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 0.25rem;
+        flex-wrap: wrap;
+        padding: 0.5rem 0;
+      }
+
+      /* Vertical sidebar mode - triggered by parent class */
+      :host(.spc-sidebar-nav) {
+        flex-direction: column;
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        gap: 0.25rem;
+        padding: 0.5rem 0;
+        width: 100%;
+      }
+
       :host > * {
-        color: var(--spc-footer-icon-color, inherit);
+        color: var(--spc-footer-icon-color, #b3b3b3);
+        transition: color 0.2s ease, transform 0.1s ease;
+      }
+
+      :host > *:hover {
+        color: #ffffff;
+        transform: scale(1.1);
       }
 
       :host > *[selected] {
-        color: var(--spc-footer-icon-color-selected, var(--dark-primary-color));
+        color: var(--spc-footer-icon-color-selected, #1DB954);
       }
 
       :host > *[hide] {

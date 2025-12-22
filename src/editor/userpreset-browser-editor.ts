@@ -40,6 +40,12 @@ const CONFIG_SETTINGS_SCHEMA = [
     valueMax: 12,
   },
   {
+    name: 'userPresetBrowserFilterDisabled',
+    label: 'Disable filter input',
+    required: false,
+    selector: { boolean: {} },
+  },
+  {
     name: 'userPresetBrowserItemsHideTitle',
     label: 'Hide item row title text',
     required: false,

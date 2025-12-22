@@ -1,10 +1,9 @@
 // lovelace card imports.
-import { css, html, TemplateResult, unsafeCSS } from 'lit';
-import { query, state } from 'lit/decorators.js';
+import { css, html, TemplateResult } from 'lit';
+import { property, query, state } from 'lit/decorators.js';
 import { styleMap } from 'lit-html/directives/style-map.js';
 
 // our imports.
-import { PLAYER_CONTROLS_ICON_TOGGLE_COLOR_DEFAULT } from '../constants';
 import { MediaPlayer } from '../model/media-player';
 import { closestElement, getHomeAssistantErrorMessage } from '../utils/utils';
 import { Player } from '../sections/player';
@@ -15,6 +14,9 @@ class Progress extends AlertUpdatesBase {
 
   // private state properties.
   @state() private playingProgress!: number;
+
+  /** True to render a compact progress bar without labels. */
+  @property({ type: Boolean }) public compact: boolean = false;
 
   /** MediaPlayer instance created from the configuration entity id. */
   private player!: MediaPlayer;
@@ -43,6 +45,8 @@ class Progress extends AlertUpdatesBase {
     this.mediaDuration = this.player?.attributes.media_duration || 0;
     const hasProgress = this.mediaDuration > 0;
 
+    const isCompact = this.compact;
+
     // show / hide the progress bar.
     if (hasProgress) {
 
@@ -50,6 +54,16 @@ class Progress extends AlertUpdatesBase {
       this.trackProgress();
 
       // render control.
+      if (isCompact) {
+        return html`
+          <div class="progress progress-compact">
+            <div class="bar bar-compact" @click=${this.onSeekBarClick}>
+              <div class="progress-bar" style=${this.styleProgressBar(this.mediaDuration)}></div>
+            </div>
+          </div>
+        `;
+      }
+
       return html`
         <div class="progress">
           <span class="progress-time progress-pad-left">${convertProgress(this.playingProgress)}</span>
@@ -195,18 +209,28 @@ class Progress extends AlertUpdatesBase {
     return css`
       .progress {
         width: 100%;
-        font-size: x-small;
+        font-size: 11px;
+        font-weight: 400;
         display: flex;
-        color: var(--spc-player-progress-label-color, var(--spc-player-controls-color, #ffffff));
-        padding-bottom: 0.2rem;
+        align-items: center;
+        color: var(--spc-player-progress-label-color, var(--spc-player-controls-color, #b3b3b3));
+        padding-bottom: 0.5rem;
+      }
+
+      .progress-compact {
+        padding-bottom: 0;
       }
 
       .progress-pad-left {
         padding-left: var(--spc-player-progress-label-padding-lr, 0rem);
+        min-width: 40px;
+        text-align: left;
       }
 
       .progress-pad-right {
         padding-right: var(--spc-player-progress-label-padding-lr, 0rem);
+        min-width: 40px;
+        text-align: right;
       }
 
       .bar {
@@ -214,27 +238,45 @@ class Progress extends AlertUpdatesBase {
         flex-grow: 1;
         align-items: center;
         align-self: center;
-        margin-left: 5px;
-        margin-right: 5px;
-        height: 14px;
+        margin-left: 8px;
+        margin-right: 8px;
+        height: 4px;
         cursor: pointer;
-        background-clip: padding-box;
-        border: 1px solid rgba(255, 255, 255, 0.10);
-        border-radius: 0.25rem;
+        background-color: #4d4d4d;
+        border-radius: 2px;
+        transition: height 0.1s ease;
+        position: relative;
+      }
+
+      .bar:hover {
+        height: 6px;
+      }
+
+      .bar-compact {
+        margin-left: 0;
+        margin-right: 0;
+        height: 3px;
+      }
+
+      .bar-compact:hover {
+        height: 4px;
+      }
+
+      .bar:hover .progress-bar {
+        background-color: #1DB954;
       }
 
       .progress-bar {
         align-self: center;
-        background-color: var(--spc-player-progress-slider-color, var(--spc-player-controls-color, var(--dark-primary-color, ${unsafeCSS(PLAYER_CONTROLS_ICON_TOGGLE_COLOR_DEFAULT)})));
-        margin-left: 2px;
-        margin-right: 2px;
-        height: 50%;
-        transition: width 0.1s linear;
-        border-radius: 0.18rem;
+        background-color: var(--spc-player-progress-slider-color, #ffffff);
+        height: 100%;
+        transition: width 0.1s linear, background-color 0.2s ease;
+        border-radius: 2px;
       }
 
       .progress-time {
         mix-blend-mode: normal;
+        letter-spacing: 0.02em;
       }
     `;
   }

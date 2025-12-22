@@ -4,7 +4,7 @@ import { DEBUG_APP_NAME } from '../constants';
 const debuglog = Debug(DEBUG_APP_NAME + ":player-body-queue");
 
 // lovelace card imports.
-import { css, html, TemplateResult } from 'lit';
+import { css, html, PropertyValues, TemplateResult } from 'lit';
 import { state } from 'lit/decorators.js';
 import {
   mdiPlay,
@@ -41,6 +41,36 @@ export class PlayerBodyQueue extends PlayerBodyBase {
 
 
   /**
+   * Called when the element has rendered for the first time.
+   * Auto-refresh queue items when component is first displayed.
+   */
+  protected override firstUpdated(changedProperties: PropertyValues): void {
+    super.firstUpdated(changedProperties);
+
+    // Auto-refresh queue items after a short delay to ensure store is ready
+    setTimeout(() => {
+      this.refreshQueueItems();
+    }, 100);
+  }
+
+
+  /**
+   * Called after the component is updated.
+   * Refresh queue when song changes.
+   */
+  protected override updated(changedProperties: PropertyValues): void {
+    super.updated(changedProperties);
+
+    // If mediaContentId changed, refresh the queue
+    if (changedProperties.has('mediaContentId') && this.mediaContentId) {
+      setTimeout(() => {
+        this.refreshQueueItems();
+      }, 200);
+    }
+  }
+
+
+  /**
    * Invoked on each update to perform rendering tasks. 
    * This method may return any value renderable by lit-html's `ChildPart` (typically a `TemplateResult`). 
    * Setting properties inside this method will *not* trigger the element to update.
@@ -50,60 +80,27 @@ export class PlayerBodyQueue extends PlayerBodyBase {
     // invoke base class method.
     super.render();
 
-    // initialize common elements.
-    let queueItems = html`<div class="grid-entry queue-info-grid-no-items">No items found in Queue</div>`;
-
-    // process all queue items.
-    if ((this.queueInfo?.queue || []).length > 0) {
-      queueItems = html`${this.queueInfo?.queue.map((item, index) => html`
-          ${(() => {
-            // render based on item type (track, episode).
-            if (item.type == 'episode') {
-              return (html `
-                <ha-icon-button
-                  .path=${mdiPlay}
-                  .label="Play episode &quot;${item.name || ""}&quot;"
-                  @click=${() => this.onClickAction(Actions.EpisodePlay, item)}
-                  slot="icon-button"
-                >&nbsp;</ha-icon-button>
-                <div class="grid-entry">${index + 1}</div>
-                <div class="grid-entry">${item.name || ""}</div>
-                <div class="grid-entry">${item.show?.name || ""}</div>
-              `)
-            } else {
-              return (html `
-                <ha-icon-button
-                  .path=${mdiPlay}
-                  .label="Play track &quot;${item.name || ""}&quot;"
-                  @click=${() => this.onClickAction(Actions.TrackPlay, item)}
-                  slot="icon-button"
-                >&nbsp;</ha-icon-button>
-                <div class="grid-entry">${index + 1}</div>
-                <div class="grid-entry">${item.name || ""}</div>
-                <div class="grid-entry">${item.artists[0].name || ""}</div>
-              `)
-            }
-        })()}
-      `)}`;
-    }
-
     // render html.
     return html` 
       <div class="player-body-container" hide=${this.isPlayerStopped}>
         <div class="player-body-container-scrollable">
           ${this.alertError ? html`<ha-alert alert-type="error" dismissable @alert-dismissed-clicked=${this.alertErrorClear}>${this.alertError}</ha-alert>` : ""}
           ${this.alertInfo ? html`<ha-alert alert-type="info" dismissable @alert-dismissed-clicked=${this.alertInfoClear}>${this.alertInfo}</ha-alert>` : ""}
-          <div class="media-info-text-ms-c queue-info-grid-container">
-            Player Queue Items
-          </div>
-          <div class="queue-info-grid-container">
-            <div class="grid queue-info-grid">
-              <div class="grid-header">&nbsp;</div>
-              <div class="grid-header">#</div>
-              <div class="grid-header">Title</div>
-              <div class="grid-header">Artist / Show / Book</div>
-              ${queueItems}
-            </div>
+          <div class="queue-list">
+            ${(this.queueInfo?.queue || []).length > 0 ? html`
+              ${this.queueInfo?.queue.map((item) => html`
+                <div class="queue-item" @click=${() => this.onClickAction(item.type == 'episode' ? Actions.EpisodePlay : Actions.TrackPlay, item)}>
+                  <div class="queue-item-artwork" style="background-image: url(${item.image_url || (item.type == 'episode' ? (item.images?.[0]?.url || '') : (item.album?.images?.[0]?.url || ''))})"></div>
+                  <div class="queue-item-info">
+                    <div class="queue-item-title">${item.name || ""}</div>
+                    <div class="queue-item-artist">${item.type == 'episode' ? (item.show?.name || "") : (item.artists?.[0]?.name || "")} • ${this.formatDuration(item.duration_ms)}</div>
+                  </div>
+                  <ha-icon-button class="queue-item-menu" .path=${mdiPlay} label="Play"></ha-icon-button>
+                </div>
+              `)}
+            ` : html`
+              <div class="queue-empty">No items in queue</div>
+            `}
           </div>
         </div>
       </div>`;
@@ -119,24 +116,108 @@ export class PlayerBodyQueue extends PlayerBodyBase {
       sharedStylesMediaInfo,
       sharedStylesFavActions,
       css`
+        .player-body-container {
+          height: 100%;
+          overflow: hidden;
+          background: transparent;
+        }
 
-        /* style grid container */
+        .player-body-container-scrollable {
+          height: 100%;
+          overflow-y: auto;
+          overflow-x: hidden;
+          background: transparent;
+        }
+
+        /* YouTube Music style queue list */
+        .queue-list {
+          display: flex;
+          flex-direction: column;
+          background: transparent;
+        }
+
+        .queue-item {
+          display: flex;
+          align-items: center;
+          padding: 0.5rem 1rem;
+          gap: 0.75rem;
+          cursor: pointer;
+          transition: background-color 0.15s ease;
+        }
+
+        .queue-item:hover {
+          background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .queue-item-artwork {
+          width: 48px;
+          height: 48px;
+          min-width: 48px;
+          border-radius: 4px;
+          background-size: cover;
+          background-position: center;
+          background-color: transparent;
+          background-repeat: no-repeat;
+        }
+
+        .queue-item-info {
+          flex: 1;
+          min-width: 0;
+          overflow: hidden;
+        }
+
+        .queue-item-title {
+          font-size: 0.875rem;
+          font-weight: 500;
+          color: #ffffff;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .queue-item-artist {
+          font-size: 0.75rem;
+          color: rgba(255, 255, 255, 0.7);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .queue-item-menu {
+          --mdc-icon-button-size: 32px;
+          --mdc-icon-size: 20px;
+          color: rgba(255, 255, 255, 0.5);
+          opacity: 0;
+          transition: opacity 0.15s ease;
+        }
+
+        .queue-item:hover .queue-item-menu {
+          opacity: 1;
+        }
+
+        .queue-empty {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 2rem;
+          color: rgba(255, 255, 255, 0.5);
+          font-size: 0.875rem;
+        }
+
+        /* Legacy grid styles - kept for compatibility */
         .queue-info-grid-container {
           margin: 0.25rem;
         }
 
-        /* style grid container and grid items */
         .queue-info-grid {
           grid-template-columns: 30px 45px auto auto;
         }
 
-        /* style grid container and grid items */
         .queue-info-grid-no-items {
           grid-column-start: 1;
           grid-column-end: 4;
         }
 
-        /* style ha-icon-button controls in grid: icon size, title text */
         .queue-info-grid > ha-icon-button[slot="icon-button"] {
           --mdc-icon-button-size: 24px;
           --mdc-icon-size: 20px;
@@ -145,6 +226,16 @@ export class PlayerBodyQueue extends PlayerBodyBase {
         }
       `
     ];
+  }
+
+  /**
+   * Formats duration in milliseconds to MM:SS format.
+   */
+  private formatDuration(ms: number | undefined): string {
+    if (!ms) return '';
+    const minutes = Math.floor(ms / 60000);
+    const seconds = Math.floor((ms % 60000) / 1000);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
 
 

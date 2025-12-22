@@ -934,6 +934,46 @@ export interface CardConfig extends LovelaceCardConfig {
   customImageUrls?: CustomImageUrls;
 
   // **********************************************************************************************************************************
+  // * Filter input options:
+  // **********************************************************************************************************************************
+
+  /** True to hide filter input in the Album Favorites browser. */
+  albumFavBrowserFilterDisabled?: boolean;
+
+  /** True to hide filter input in the Artist Favorites browser. */
+  artistFavBrowserFilterDisabled?: boolean;
+
+  /** True to hide filter input in the Audiobook Favorites browser. */
+  audiobookFavBrowserFilterDisabled?: boolean;
+
+  /** True to hide filter input in the Category browser. */
+  categoryBrowserFilterDisabled?: boolean;
+
+  /** True to hide filter input in the Device browser. */
+  deviceBrowserFilterDisabled?: boolean;
+
+  /** True to hide filter input in the Episode Favorites browser. */
+  episodeFavBrowserFilterDisabled?: boolean;
+
+  /** True to hide filter input in the Playlist Favorites browser. */
+  playlistFavBrowserFilterDisabled?: boolean;
+
+  /** True to hide filter input in the Recent browser. */
+  recentBrowserFilterDisabled?: boolean;
+
+  /** True to hide filter input in the Search Media browser. */
+  searchMediaBrowserFilterDisabled?: boolean;
+
+  /** True to hide filter input in the Show Favorites browser. */
+  showFavBrowserFilterDisabled?: boolean;
+
+  /** True to hide filter input in the Track Favorites browser. */
+  trackFavBrowserFilterDisabled?: boolean;
+
+  /** True to hide filter input in the User Preset browser. */
+  userPresetBrowserFilterDisabled?: boolean;
+
+  // **********************************************************************************************************************************
   // * Card theming options:
   // **********************************************************************************************************************************
 

@@ -40,6 +40,12 @@ const CONFIG_SETTINGS_SCHEMA = [
     valueMax: 12,
   },
   {
+    name: 'deviceBrowserFilterDisabled',
+    label: 'Disable filter input',
+    required: false,
+    selector: { boolean: {} },
+  },
+  {
     name: 'deviceBrowserItemsHideTitle',
     label: 'Hide item row title text',
     required: false,

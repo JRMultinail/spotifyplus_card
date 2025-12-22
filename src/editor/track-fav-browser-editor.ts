@@ -43,6 +43,12 @@ const CONFIG_SETTINGS_SCHEMA = [
     valueMax: 12,
   },
   {
+    name: 'trackFavBrowserFilterDisabled',
+    label: 'Disable filter input',
+    required: false,
+    selector: { boolean: {} },
+  },
+  {
     name: 'trackFavBrowserItemsHideTitle',
     label: 'Hide item row title text',
     required: false,

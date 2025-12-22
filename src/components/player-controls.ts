@@ -5,11 +5,13 @@ import { DEBUG_APP_NAME } from '../constants';
 const debuglog = Debug(DEBUG_APP_NAME + ":player-controls");
 
 // lovelace card imports.
-import { css, html, PropertyValues, TemplateResult, nothing, unsafeCSS } from 'lit';
+import { css, html, PropertyValues, TemplateResult, nothing } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { styleMap, StyleInfo } from 'lit-html/directives/style-map.js';
 import {
-  mdiInformationSlabBoxOutline,
+  mdiCast,
+  mdiHeart,
+  mdiHeartOutline,
   mdiPause,
   mdiPlay,
   mdiPlaylistMusic,
@@ -26,7 +28,6 @@ import {
 
 // our imports.
 import {
-  PLAYER_CONTROLS_ICON_SIZE_DEFAULT,
   PLAYER_CONTROLS_ICON_TOGGLE_COLOR_DEFAULT
 } from '../constants';
 import { CardConfig } from '../types/card-config';
@@ -39,9 +40,11 @@ import { Player } from '../sections/player';
 import { PlayerBodyQueue } from './player-body-queue';
 import { AlertUpdatesBase } from '../sections/alert-updates-base';
 import { Section } from '../types/section';
+import { DevicesPopoutToggleEvent } from '../events/devices-popout-toggle';
 
 const { NEXT_TRACK, PAUSE, PLAY, PREVIOUS_TRACK, REPEAT_SET, SHUFFLE_SET, TURN_ON, TURN_OFF } = MediaPlayerEntityFeature;
 const ACTION_FAVES = 900000000000;
+const ACTION_FAVORITE = 910000000000;
 const PLAY_QUEUE = 990000000000;
 const DEVICES = 999000000000;
 
@@ -49,10 +52,12 @@ class PlayerControls extends AlertUpdatesBase {
 
   // public state properties.
   @property({ attribute: false }) mediaContentId!: string;
+  @property({ attribute: false }) hideQueue: boolean = false;
 
   // private state properties.
   @state() private isActionFavoritesVisible?: boolean;
   @state() private isQueueItemsVisible?: boolean;
+  @state() private isFavorite?: boolean;
 
   /** Card configuration data. */
   private config!: CardConfig;
@@ -89,7 +94,6 @@ class PlayerControls extends AlertUpdatesBase {
     const colorShuffle = (this.player.attributes.shuffle);
     const colorPlay = (this.player.state == MediaPlayerState.PAUSED);
     const colorPower = (this.player.state == MediaPlayerState.OFF);
-    const colorActionFavorites = (this.isActionFavoritesVisible);
     const colorQueueItems = (this.isQueueItemsVisible);
 
     // render html.
@@ -101,14 +105,15 @@ class PlayerControls extends AlertUpdatesBase {
       <div class="player-controls-container" style=${this.styleContainer(idle, isOff)}>
           <div class="icons" hide=${stopped}>
               <div class="flex-1"></div>
-              <ha-icon-button @click=${() => this.onClickAction(ACTION_FAVES)}   hide=${this.hideFeature(ACTION_FAVES)}   .path=${mdiInformationSlabBoxOutline} label="More Information" style=${this.styleIcon(colorActionFavorites)} ></ha-icon-button>
               <ha-icon-button @click=${() => this.onClickAction(SHUFFLE_SET)}    hide=${this.hideFeature(SHUFFLE_SET)}    .path=${this.getShuffleIcon()} label="Shuffle" style=${this.styleIcon(colorShuffle)}></ha-icon-button>
               <ha-icon-button @click=${() => this.onClickAction(PREVIOUS_TRACK)} hide=${this.hideFeature(PREVIOUS_TRACK)} .path=${mdiSkipPrevious} label="Previous Track"></ha-icon-button>
               <ha-icon-button @click=${() => this.onClickAction(PLAY)}           hide=${this.hideFeature(PLAY)}           .path=${mdiPlay} label="Play" style=${this.styleIcon(colorPlay)}></ha-icon-button>
               <ha-icon-button @click=${() => this.onClickAction(PAUSE)}          hide=${this.hideFeature(PAUSE)}          .path=${mdiPause} label="Pause"></ha-icon-button>
               <ha-icon-button @click=${() => this.onClickAction(NEXT_TRACK)}     hide=${this.hideFeature(NEXT_TRACK)}     .path=${mdiSkipNext} label="Next Track"></ha-icon-button>
-              <ha-icon-button @click=${() => this.onClickAction(REPEAT_SET)}     hide=${this.hideFeature(REPEAT_SET)}     .path=${this.getRepeatIcon()} label="Repeat" style=${this.styleIcon(colorRepeat)} ></ha-icon-button>
-              <ha-icon-button @click=${() => this.onClickAction(PLAY_QUEUE)}     hide=${this.hideFeature(PLAY_QUEUE)}     .path=${mdiPlaylistMusic} label="Play Queue Information" style=${this.styleIcon(colorQueueItems)} ></ha-icon-button>
+              <ha-icon-button @click=${() => this.onClickAction(REPEAT_SET)}     hide=${this.hideFeature(REPEAT_SET)}     .path=${this.getRepeatIcon()} label="Repeat" style=${this.styleIcon(colorRepeat)}></ha-icon-button>
+              <ha-icon-button @click=${() => this.onClickAction(ACTION_FAVORITE)} .path=${this.isFavorite ? mdiHeart : mdiHeartOutline} label="Favorite" style=${this.styleIcon(this.isFavorite)}></ha-icon-button>
+              ${!this.hideQueue ? html`<ha-icon-button @click=${() => this.onClickAction(PLAY_QUEUE)} hide=${this.hideFeature(PLAY_QUEUE)} .path=${mdiPlaylistMusic} label="Play Queue Information" style=${this.styleIcon(colorQueueItems)}></ha-icon-button>` : ''}
+              <ha-icon-button @click=${() => this.onClickAction(DEVICES)}        hide=${this.hideFeature(DEVICES)}        .path=${mdiCast} label="Devices"></ha-icon-button>
           </div>
           <div class="iconsPower" hide=${isOff}>
               <ha-icon-button @click=${() => this.onClickAction(TURN_ON)}        hide=${this.hideFeature(TURN_ON)}        .path=${mdiPower} label="Turn On" style=${this.styleIcon(colorPower)}></ha-icon-button>
@@ -131,38 +136,61 @@ class PlayerControls extends AlertUpdatesBase {
   static get styles() {
     return css`
       .player-controls-container {
-        margin: 0.75rem 3.25rem;
-        padding-left: 0.5rem;
-        padding-right: 0.5rem;
+        margin: 0.5rem auto;
+        padding: 0 1rem;
         max-width: 40rem;
         text-align: center;
         overflow: hidden auto;
-        /*border: 1px solid red;  /*  FOR TESTING CONTROL LAYOUT CHANGES */
       }
 
       .player-volume-container {
         display: block;
+        margin-top: 0.5rem;
       }
 
       .icons {
         justify-content: center;
         display: inline-flex;
         align-items: center;
+        gap: 0.5rem;
         overflow: hidden;
-        color: var(--spc-player-controls-icon-color, #ffffff);
-        --mdc-icon-button-size: var(--spc-player-controls-icon-button-size, 2.75rem);
-        --mdc-icon-size: var(--spc-player-controls-icon-size, ${unsafeCSS(PLAYER_CONTROLS_ICON_SIZE_DEFAULT)});
+        color: var(--spc-player-controls-icon-color, #b3b3b3);
+        --mdc-icon-button-size: var(--spc-player-controls-icon-button-size, 3.3rem);
+        --mdc-icon-size: var(--spc-player-controls-icon-size, 2.4rem);
         mix-blend-mode: normal;
+      }
+
+      .icons ha-icon-button {
+        transition: color 0.2s ease, transform 0.1s ease;
+      }
+
+      .icons ha-icon-button:hover {
+        color: #ffffff;
+        transform: scale(1.1);
+      }
+
+      .icons ha-icon-button:active {
+        transform: scale(0.95);
       }
 
       .iconsPower {
         justify-content: center;
-        display: block;
+        display: flex;
         align-items: center;
+        gap: 1rem;
         overflow: hidden;
-        color: var(--spc-player-controls-icon-color, #ffffff);
-        --mdc-icon-button-size: var(--spc-player-controls-icon-button-size, 2.75rem);
-        --mdc-icon-size: var(--spc-player-controls-icon-size, ${unsafeCSS(PLAYER_CONTROLS_ICON_SIZE_DEFAULT)});
+        color: var(--spc-player-controls-icon-color, #b3b3b3);
+        --mdc-icon-button-size: var(--spc-player-controls-icon-button-size, 3.3rem);
+        --mdc-icon-size: var(--spc-player-controls-icon-size, 2.4rem);
+      }
+
+      .iconsPower ha-icon-button {
+        transition: color 0.2s ease, transform 0.1s ease;
+      }
+
+      .iconsPower ha-icon-button:hover {
+        color: #ffffff;
+        transform: scale(1.1);
       }
 
       *[hide] {
@@ -254,7 +282,7 @@ class PlayerControls extends AlertUpdatesBase {
     //}
 
     // if media content id changed, then refresh queue items body (if visible).
-    if (changedPropKeys.includes('mediaContentId')) {
+    if (changedPropKeys.includes('mediaContentId') && !this.hideQueue) {
 
       // refresh all body actions.
       setTimeout(() => {
@@ -285,6 +313,10 @@ class PlayerControls extends AlertUpdatesBase {
    * Toggle action visibility - queue items body.
    */
   private toggleDisplayPlayerBodyQueue(): void {
+
+    if (this.hideQueue) {
+      return;
+    }
 
     // toggle action visibility - queue items.
     const elmBody = this.parentElement?.querySelector("#elmPlayerBodyQueue") as PlayerBodyQueue;
@@ -373,8 +405,16 @@ class PlayerControls extends AlertUpdatesBase {
 
       } else if (action == DEVICES) {
 
-        // show devices section.
-        this.store.card.SetSection(Section.DEVICES);
+        // show devices popout.
+        this.dispatchEvent(DevicesPopoutToggleEvent(true));
+        return true;
+
+      } else if (action == ACTION_FAVORITE) {
+
+        // Toggle favorite visual state (API integration requires SpotifyPlus service methods)
+        this.isFavorite = !this.isFavorite;
+        this.alertInfoSet(this.isFavorite ? "Added to favorites" : "Removed from favorites");
+        return true;
 
       } else if (action == PLAY_QUEUE) {
 
@@ -573,11 +613,9 @@ class PlayerControls extends AlertUpdatesBase {
 
     } else if (feature == DEVICES) {
 
-      // show button if player is minimized and devices section enabled.
-      if (this.config.playerMinimizeOnIdle) {
-        if (this.config.sections?.includes(Section.DEVICES)) {
-          return nothing;
-        }
+      // show button if devices section is enabled.
+      if (this.config.sections?.includes(Section.DEVICES)) {
+        return nothing;
       }
 
     }

@@ -43,6 +43,12 @@ const CONFIG_SETTINGS_SCHEMA = [
     valueMax: 12,
   },
   {
+    name: 'audiobookFavBrowserFilterDisabled',
+    label: 'Disable filter input',
+    required: false,
+    selector: { boolean: {} },
+  },
+  {
     name: 'audiobookFavBrowserItemsHideTitle',
     label: 'Hide item row title text',
     required: false,

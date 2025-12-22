@@ -130,77 +130,63 @@ class PlayerHeader extends LitElement {
   /**
    * style definitions used by this component.
    * */
-static get styles() {
-  return [
-    sharedStylesFavActions,
-    css`
+  static get styles() {
+    return [
+      sharedStylesFavActions,
+      css`
 
       .player-header-container {
         margin-top: 0rem;
-        padding: 0.5rem;
-        padding-top: 0rem;
-        padding-bottom: 0rem;
+        padding: 0.75rem 1rem;
         max-width: 40rem;
         text-align: center;
         background-position: center;
         background-repeat: no-repeat;
         background-size: contain;
-        /*border: 1px solid red;  /*  FOR TESTING CONTROL LAYOUT CHANGES */
       }
 
       .header-title {
         overflow: hidden;
         text-overflow: ellipsis;
-        font-size: var(--spc-player-header-title1-font-size, 1.0rem);
-        line-height: var(--spc-player-header-title1-font-size, 1.0rem);
-        font-weight: 500;
-        text-shadow: 0 0 2px var(--spc-player-palette-vibrant);
+        font-size: var(--spc-player-header-title1-font-size, 0.875rem);
+        line-height: 1.3;
+        font-weight: 600;
+        letter-spacing: 0.02em;
         color: var(--spc-player-header-title1-color, #ffffff);
         white-space: nowrap;
         mix-blend-mode: normal;
         min-height: 0.5rem;
-        padding: 0.2rem;
+        padding: 0.15rem 0;
+        text-transform: uppercase;
       }
 
       .header-artist-track {
         overflow: hidden;
         text-overflow: ellipsis;
-        font-size: var(--spc-player-header-title2-font-size, 1.15rem);
-        line-height: var(--spc-player-header-title2-font-size, 1.15rem);
-        font-weight: 400;
-        text-shadow: 0 0 2px var(--spc-player-palette-vibrant);
+        font-size: var(--spc-player-header-title2-font-size, 1.25rem);
+        line-height: 1.3;
+        font-weight: 700;
+        letter-spacing: -0.01em;
         color: var(--spc-player-header-title2-color, #ffffff);
         mix-blend-mode: normal;
-        padding: 0.1rem;
+        padding: 0.25rem 0;
       }
 
       .header-artist-album {
         overflow: hidden;
         text-overflow: ellipsis;
-        font-size: var(--spc-player-header-title3-font-size, 1.0rem);
-        line-height: var(--spc-player-header-title3-font-size, 1.0rem);
+        font-size: var(--spc-player-header-title3-font-size, 0.9rem);
+        line-height: 1.3;
         font-weight: 400;
-        text-shadow: 0 0 2px var(--spc-player-palette-vibrant);
-        color: var(--spc-player-header-title3-color, #ffffff);
+        color: var(--spc-player-header-title3-color, #b3b3b3);
         mix-blend-mode: normal;
-        padding: 0.1rem;
+        padding: 0.1rem 0;
       }
 
-      ///* when the user prefers dark theme mode */
-      //@media (prefers-color-scheme: dark) {
-
-      //  .header-title {
-      //    color: var(--spc-player-header-title1-color, #ffffff);
-      //  }
-
-      //  .header-artist-track {
-      //    color: var(--spc-player-header-title2-color, #ffffff);
-      //  }
-
-      //  .header-artist-album {
-      //    color: var(--spc-player-header-title3-color, #ffffff);
-      //  }
-      //}
+      .header-artist-album:hover {
+        color: #ffffff;
+        cursor: pointer;
+      }
     `
     ];
   }

@@ -32,6 +32,12 @@ const CONFIG_SETTINGS_SCHEMA = [
     valueMax: 12,
   },
   {
+    name: 'recentBrowserFilterDisabled',
+    label: 'Disable filter input',
+    required: false,
+    selector: { boolean: {} },
+  },
+  {
     name: 'recentBrowserItemsHideTitle',
     label: 'Hide item row title text',
     required: false,

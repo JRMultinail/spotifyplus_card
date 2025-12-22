@@ -7,7 +7,7 @@ import './card';
 
 // Display card version details in console, as well as a link to help docs.
 console.groupCollapsed(
-  `%cSPOTIFYPLUS-CARD ${CARD_VERSION} IS INSTALLED`,
+  `%cSPOTIFYPLUSBETTER-CARD ${CARD_VERSION} IS INSTALLED`,
   "color: green; font-weight: bold"
 );
 console.log(
@@ -20,16 +20,17 @@ console.log(
 );
 console.log(
   "SpotifyPlus Card Debug Logging Console Commands:\n",
-  "- enable:  localStorage.setItem('debug', 'spotifyplus-card:*');\n",
+  "- enable:  localStorage.setItem('debug', 'spotifyplusbetter-card:*');\n",
   "- disable: localStorage.setItem('debug', '');"
- );
+);
 console.groupEnd();
 
 // Register our card for the card picker dialog in the HA UI dashboard
 // by adding it to the "window.customCards" array with attributes that
 // describe the card and what it provides ("type" and "name" are required).
+window.customCards = window.customCards || [];
 window.customCards.push({
-  type: 'spotifyplus-card',
+  type: 'spotifyplusbetter-card',
   name: 'SpotifyPlus Card',
   description: 'Home Assistant UI card that supports features unique to the SpotifyPlus custom integration',
   //documentationURL: 'https://github.com/thlucas1/spotifyplus_card/wiki/Configuration-Options',

@@ -285,8 +285,8 @@ class Volume extends AlertUpdatesBase {
 
     } else if (feature == VOLUME_SET) {
 
-        if (this.player.supportsFeature(VOLUME_SET))
-          return nothing;
+      if (this.player.supportsFeature(VOLUME_SET))
+        return nothing;
 
     } else if (feature == VOLUME_STEP) {
 
@@ -357,59 +357,67 @@ class Volume extends AlertUpdatesBase {
   static get styles() {
     return css`
       ha-control-slider {
-        --control-slider-color: var(--spc-player-volume-slider-color, var(--spc-player-controls-color, var(--dark-primary-color, ${unsafeCSS(PLAYER_CONTROLS_ICON_TOGGLE_COLOR_DEFAULT)})));
-        --control-slider-thickness: 1rem;
-        border: 1px solid rgba(255, 255, 255, 0.10);
+        --control-slider-color: var(--spc-player-volume-slider-color, #1DB954);
+        --control-slider-background: #4d4d4d;
+        --control-slider-thickness: 4px;
+        border-radius: 2px;
         box-sizing: border-box;
+        transition: --control-slider-thickness 0.1s ease;
+      }
+
+      ha-control-slider:hover {
+        --control-slider-thickness: 6px;
       }
 
       ha-control-slider[disabled] {
         --control-slider-color: var(--disabled-text-color);
-        --control-slider-thickness: 1rem;
-        border: 1px solid rgba(255, 255, 255, 0.10);
+        --control-slider-thickness: 4px;
         box-sizing: border-box;
       }
 
       .volume-container {
         flex: 1;
-        /*border: 1px solid blue;  /*  FOR TESTING CONTROL LAYOUT CHANGES */
       }
 
       .volume-slider {
         flex: 1;
         padding-right: 0.0rem;
         align-content: flex-end;
-        color: var(--spc-player-volume-label-color, var(--spc-player-controls-color, #ffffff));
+        color: var(--spc-player-volume-label-color, var(--spc-player-controls-color, #b3b3b3));
       }
 
       .volume-level {
-        font-size: x-small;
+        font-size: 11px;
+        font-weight: 400;
         display: flex;
+        margin-top: 4px;
       }
 
       .volume-level-min {
         flex: 0;
         text-align: left;
         margin-right: 4px;
+        color: #b3b3b3;
       }
 
       .volume-level-pct {
         text-align: right;
-        font-weight: normal;
-        font-size: 10px;
-        color: var(--spc-player-volume-slider-color, var(--spc-player-controls-color, var(--dark-primary-color, ${unsafeCSS(PLAYER_CONTROLS_ICON_TOGGLE_COLOR_DEFAULT)})));
+        font-weight: 500;
+        font-size: 11px;
+        color: #1DB954;
       }
 
       .volume-level-max {
         flex: 100;
         text-align: right;
         margin-left: 4px;
+        color: #b3b3b3;
       }
 
       *[slim] * {
-        --control-slider-thickness: 10px;
-        --mdc-icon-button-size: 30px;
-        --mdc-icon-size: 20px;
+        --control-slider-thickness: 4px;
+        --mdc-icon-button-size: 28px;
+        --mdc-icon-size: 18px;
       }
 
       *[slim] .volume-level {
@@ -425,12 +433,22 @@ class Volume extends AlertUpdatesBase {
         justify-content: center;
         display: inline-flex;
         align-items: center;
+        gap: 0.5rem;
         mix-blend-mode: normal;
         overflow: hidden;
-        color: var(--spc-player-controls-icon-color, #ffffff);
+        color: var(--spc-player-controls-icon-color, #b3b3b3);
         width: 100%;
-        --mdc-icon-button-size: var(--spc-player-controls-icon-button-size, 2.75rem);
+        --mdc-icon-button-size: var(--spc-player-controls-icon-button-size, 2.5rem);
         --mdc-icon-size: var(--spc-player-controls-icon-size, ${unsafeCSS(PLAYER_CONTROLS_ICON_SIZE_DEFAULT)});
+      }
+
+      .icons ha-icon-button {
+        transition: color 0.2s ease, transform 0.1s ease;
+      }
+
+      .icons ha-icon-button:hover {
+        color: #ffffff;
+        transform: scale(1.1);
       }
 
       *[hide] {

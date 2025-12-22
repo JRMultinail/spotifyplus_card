@@ -36,6 +36,10 @@ export function removeSpecialChars(str: string) {
  */
 export function getCustomImageUrl(collection: CustomImageUrls | undefined, title: string) {
 
+  if (!collection) {
+    return undefined;
+  }
+
   // search collection for matching title and return the imageUrl.
   // remove any special characters from the title before comparing.
   // note that we already removed special characters from the collection 

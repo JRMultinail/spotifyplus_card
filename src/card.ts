@@ -11,6 +11,7 @@ import { choose } from 'lit/directives/choose.js';
 import { when } from 'lit/directives/when.js';
 import { HomeAssistant } from './types/home-assistant-frontend/home-assistant';
 import { v4 as uuidv4 } from 'uuid';
+import { mdiCast, mdiClose, mdiHeart, mdiHeartOutline, mdiPause, mdiPlay, mdiRefresh } from '@mdi/js';
 
 // ** IMPORTANT - Vibrant notes:
 // ensure that you have "compilerOptions"."lib": [ ... , "WebWorker" ] specified
@@ -40,6 +41,7 @@ import './editor/editor';
 import {
   BRAND_LOGO_IMAGE_BASE64,
   BRAND_LOGO_IMAGE_SIZE,
+  DOMAIN_SPOTIFYPLUS,
   FOOTER_ICON_SIZE_DEFAULT,
   PLAYER_CONTROLS_ICON_TOGGLE_COLOR_DEFAULT
 } from './constants';
@@ -51,6 +53,7 @@ import {
   isCardInEditPreview,
   isCardInPickerPreview,
   isNumber,
+  loadHaFormLazyControls,
 } from './utils/utils';
 import { EDITOR_CONFIG_AREA_SELECTED, EditorConfigAreaSelectedEventArgs } from './events/editor-config-area-selected';
 import { FILTER_SECTION_MEDIA, FilterSectionMediaEventArgs } from './events/filter-section-media';
@@ -58,12 +61,14 @@ import { PROGRESS_STARTED } from './events/progress-started';
 import { PROGRESS_ENDED } from './events/progress-ended';
 import { CATEGORY_DISPLAY, CategoryDisplayEventArgs } from './events/category-display';
 import { SEARCH_MEDIA, SearchMediaEventArgs } from './events/search-media';
+import { DEVICES_POPOUT_TOGGLE } from './events/devices-popout-toggle';
 import { Store } from './model/store';
 import { Section } from './types/section';
 import { ConfigArea } from './types/config-area';
 import { CardConfig } from './types/card-config';
 import { CustomImageUrls } from './types/custom-image-urls';
 import { SearchMediaTypes } from './types/search-media-types';
+import { EntityRegistryDisplayEntry } from './types/home-assistant-frontend/entity-registry-entry';
 import { SearchBrowser } from './sections/search-media-browser';
 import { AlertUpdatesBase } from './sections/alert-updates-base';
 import { FavBrowserBase } from './sections/fav-browser-base';
@@ -79,9 +84,8 @@ import { PlaylistFavBrowser } from './sections/playlist-fav-browser';
 import { ShowFavBrowser } from './sections/show-fav-browser';
 import { TrackFavBrowser } from './sections/track-fav-browser';
 import { formatTitleInfo, removeSpecialChars } from './utils/media-browser-utils';
+import { updateCardConfigurationStorage } from './utils/lovelace-config-util';
 
-const HEADER_HEIGHT = 2;
-const FOOTER_HEIGHT = 4;
 const CARD_DEFAULT_HEIGHT = '35.15rem';
 const CARD_DEFAULT_WIDTH = '35.15rem';
 const CARD_EDIT_PREVIEW_HEIGHT = '42rem';
@@ -96,7 +100,7 @@ const EDIT_BOTTOM_TOOLBAR_HEIGHT = '59px';
 // https://gist.github.com/thomasloven/1de8c62d691e754f95b023105fe4b74b
 
 
-@customElement("spotifyplus-card")
+@customElement("spotifyplusbetter-card")
 export class Card extends AlertUpdatesBase {
 
   /** 
@@ -123,6 +127,9 @@ export class Card extends AlertUpdatesBase {
   @state() private loaderTimestamp!: number;
   @state() private cancelLoader!: boolean;
   @state() private playerId!: string;
+  @state() public playerExpanded: boolean = true; // Player expand/collapse state
+  @state() private showDevicesPopout: boolean = false;
+  @state() private isNowPlayingFavorite?: boolean;
 
   // vibrant processing state properties.
   @state() public playerImage?: string;
@@ -149,9 +156,13 @@ export class Card extends AlertUpdatesBase {
   @query("#elmShowFavBrowserForm", false) private elmShowFavBrowserForm!: ShowFavBrowser;
   @query("#elmTrackFavBrowserForm", false) private elmTrackFavBrowserForm!: TrackFavBrowser;
   @query("#elmUserPresetBrowserForm", false) private elmUserPresetBrowserForm!: UserPresetBrowser;
+  @query("#elmDeviceBrowserPopout", false) private elmDeviceBrowserPopout?: DeviceBrowser;
 
   /** Indicates if createStore method is executing for the first time (true) or not (false). */
   private isFirstTimeSetup: boolean = true;
+
+  /** Tracks the last non-player section so minimize can return to browsing. */
+  private lastNonPlayerSection?: Section;
 
   /** Indicates if an async update is in progress (true) or not (false). */
   protected isUpdateInProgressAsync!: boolean;
@@ -169,7 +180,199 @@ export class Card extends AlertUpdatesBase {
     this.showLoader = false;
     this.cancelLoader = false;
     this.loaderTimestamp = 0;
+    this.playerExpanded = true;
+  }
 
+  /**
+   * Toggles the player between expanded and minimized states.
+   */
+  public togglePlayerExpanded(): void {
+    this.playerExpanded = !this.playerExpanded;
+    this.requestUpdate();
+  }
+
+  /**
+   * Handles the Devices popout toggle event.
+   */
+  private onDevicesPopoutToggle = (ev: Event) => {
+    const evArgs = (ev as CustomEvent).detail as { open?: boolean } | undefined;
+    if (typeof evArgs?.open === 'boolean') {
+      this.showDevicesPopout = evArgs.open;
+    } else {
+      this.showDevicesPopout = !this.showDevicesPopout;
+    }
+  }
+
+  /**
+   * Closes the Devices popout.
+   */
+  private onDevicesPopoutClose = () => {
+    this.showDevicesPopout = false;
+  }
+
+  /**
+   * Refreshes devices from the popout header.
+   */
+  private onDevicesPopoutRefreshClick = (ev: Event) => {
+    ev.stopPropagation();
+    this.elmDeviceBrowserPopout?.refreshList();
+  }
+
+  /**
+   * Handles now playing bar click to return to the full player.
+   */
+  private onNowPlayingBarClick = () => {
+    this.playerExpanded = true;
+    this.SetSection(Section.PLAYER);
+  }
+
+  /**
+   * Handles cast button click from the now playing bar.
+   */
+  private onNowPlayingCastClick = (ev: Event) => {
+    ev.stopPropagation();
+    this.dispatchEvent(new CustomEvent(DEVICES_POPOUT_TOGGLE, { bubbles: true, composed: true, detail: { open: true } }));
+  }
+
+  /**
+   * Handles play/pause from the now playing bar.
+   */
+  private onNowPlayingPlayPauseClick = (ev: Event) => {
+    ev.stopPropagation();
+    if (this.store.player.isPlaying()) {
+      this.hass.callService('media_player', 'media_pause', { entity_id: this.config.entity });
+    } else {
+      this.hass.callService('media_player', 'media_play', { entity_id: this.config.entity });
+    }
+  }
+
+  /**
+   * Handles favorite toggle from the now playing bar.
+   */
+  private async onNowPlayingFavoriteClick(ev: Event): Promise<void> {
+    ev.stopPropagation();
+
+    if (this.store.player.attributes.sp_item_type !== 'track') {
+      this.alertInfoSet("Favorites are only supported for tracks.");
+      return;
+    }
+
+    try {
+      this.progressShow();
+      const result = await this.store.spotifyPlusService.CheckTrackFavorites(this.store.player, null);
+      const isFavorite = Object.values(result)[0] || false;
+      if (isFavorite) {
+        await this.store.spotifyPlusService.RemoveTrackFavorites(this.store.player, null);
+      } else {
+        await this.store.spotifyPlusService.SaveTrackFavorites(this.store.player, null);
+      }
+      this.isNowPlayingFavorite = !isFavorite;
+    } catch (error) {
+      this.alertErrorSet("Favorite toggle failed: " + getHomeAssistantErrorMessage(error));
+    } finally {
+      this.progressHide();
+    }
+  }
+
+  /**
+   * Refresh favorite status for the currently playing track.
+   */
+  private async updateNowPlayingFavoriteStatus(): Promise<void> {
+    if (!this.store?.player || this.store.player.attributes.sp_item_type !== 'track') {
+      this.isNowPlayingFavorite = undefined;
+      return;
+    }
+
+    try {
+      const result = await this.store.spotifyPlusService.CheckTrackFavorites(this.store.player, null);
+      this.isNowPlayingFavorite = Object.values(result)[0] || false;
+    } catch {
+      this.isNowPlayingFavorite = undefined;
+    }
+  }
+
+  /**
+   * Returns the list of configured SpotifyPlus entities.
+   */
+  private getSpotifyPlusEntities(): EntityRegistryDisplayEntry[] {
+    const entries = Object.values(this.hass?.entities || {});
+    return entries
+      .filter((entry) => entry.platform === DOMAIN_SPOTIFYPLUS && entry.entity_id?.startsWith('media_player.'))
+      .sort((a, b) => this.getEntityDisplayName(a.entity_id, a).localeCompare(this.getEntityDisplayName(b.entity_id, b)));
+  }
+
+  /**
+   * Resolves a friendly name for an entity.
+   */
+  private getEntityDisplayName(entityId: string, entry?: EntityRegistryDisplayEntry): string {
+    const state = this.hass?.states?.[entityId];
+    return state?.attributes?.friendly_name || entry?.name || entityId;
+  }
+
+  /**
+   * Handles entity selection from the account switcher.
+   */
+  private async onAccountEntitySelect(entityId: string): Promise<void> {
+    if (!entityId || entityId === this.config.entity) {
+      return;
+    }
+
+    const newConfig: CardConfig = {
+      ...this.config,
+      entity: entityId,
+    };
+
+    try {
+      await updateCardConfigurationStorage(newConfig);
+      this.config = newConfig;
+      this.playerId = entityId;
+      this.isFirstTimeSetup = true;
+      this.playerExpanded = true;
+      this.SetSection(Section.PLAYER);
+    } catch (error) {
+      this.alertErrorSet("Account switch failed: " + getHomeAssistantErrorMessage(error));
+    }
+  }
+
+  /**
+   * Renders the account switcher in the sidebar.
+   */
+  private renderSidebarAccountMenu(entities: EntityRegistryDisplayEntry[]) {
+    if (!entities || entities.length === 0) {
+      return html``;
+    }
+
+    const currentEntity = this.config.entity;
+    const currentName = this.getEntityDisplayName(currentEntity);
+    const userName = this.store?.player?.attributes?.sp_user_display_name || currentName;
+    const initial = (userName || '?').trim().charAt(0).toUpperCase() || '?';
+
+    return html`
+      <div class="spc-sidebar-account">
+        <ha-md-button-menu positioning="popover">
+          <ha-assist-chip
+            slot="trigger"
+            class="spc-sidebar-account-trigger"
+            title=${userName}
+            aria-label="Switch account"
+          >
+            <span class="spc-sidebar-account-initial">${initial}</span>
+          </ha-assist-chip>
+          ${entities.map((entry) => {
+            const entityId = entry.entity_id;
+            const displayName = this.getEntityDisplayName(entityId, entry);
+            const isCurrent = entityId === currentEntity;
+            const label = isCurrent ? `${displayName} (current)` : displayName;
+            return html`
+              <ha-md-menu-item @click=${() => this.onAccountEntitySelect(entityId)}>
+                <div slot="headline">${label}</div>
+                <div slot="supporting-text">${entityId}</div>
+              </ha-md-menu-item>
+            `;
+          })}
+        </ha-md-button-menu>
+      </div>
+    `;
   }
 
 
@@ -208,59 +411,134 @@ export class Card extends AlertUpdatesBase {
     // calculate height of the card, accounting for any extra
     // titles that are shown, footer, etc.
     const sections = this.config.sections;
-    const showFooter = !sections || sections.length > 1;
+    const hasMultipleSections = !sections || sections.length > 1;
+    const isPlayerSection = this.section === Section.PLAYER;
+
+    // Sidebar: visible when browsing tabs (not fullscreen player)
+    const showSidebar = hasMultipleSections && !isPlayerSection;
+    // Now Playing Bar: floating at bottom when browsing tabs
+    const showNowPlayingBar = (!isPlayerSection && hasMultipleSections) || !this.playerExpanded;
+
     const title = formatTitleInfo(this.config.title, this.config, this.store.player);
+    const spotifyEntities = this.getSpotifyPlusEntities();
+    const nowPlayingDevice = this.store.player.attributes.sp_device_name || this.store.player.attributes.source || '';
+    const nowPlayingFavoriteIcon = this.isNowPlayingFavorite ? mdiHeart : mdiHeartOutline;
+    const nowPlayingPlayIcon = this.store.player.isPlaying() ? mdiPause : mdiPlay;
+    const nowPlayingArtwork = this.store.player.attributes.entity_picture || this.store.player.attributes.entity_picture_local;
+    const nowPlayingArtworkUrl = nowPlayingArtwork ? this.hass.hassUrl(nowPlayingArtwork) : (this.playerImage || '');
 
     // check for background image changes.
     this.checkForBackgroundImageChange();
 
-    // render html for the card.
+    // render html for the card with new horizontal layout.
     return html`
-      <ha-card class="spc-card" style=${this.styleCard()}>
+      <ha-card class="spc-card ${this.playerExpanded ? 'spc-expanded' : 'spc-minimized'}" style=${this.styleCard()}>
         <div class="spc-loader" ?hidden=${!this.showLoader}>
           <ha-spinner size="large"></ha-spinner>
         </div>
-        ${title ? html`<div class="spc-card-header" style=${this.styleCardHeader()}>${title}</div>` : ""}
         ${this.alertError ? html`<ha-alert alert-type="error" dismissable @alert-dismissed-clicked=${this.alertErrorClear}>${this.alertError}</ha-alert>` : ""}
         ${this.alertInfo ? html`<ha-alert alert-type="info" dismissable @alert-dismissed-clicked=${this.alertInfoClear}>${this.alertInfo}</ha-alert>` : ""}
-        <div class="spc-card-content-section" style=${this.styleCardContent()}>
-          ${this.store.player.id != ""
-              ? choose(this.section, [
-                [Section.ALBUM_FAVORITES, () => html`<spc-album-fav-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmAlbumFavBrowserForm"></spc-album-fav-browser>`],
-                [Section.ARTIST_FAVORITES, () => html`<spc-artist-fav-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmArtistFavBrowserForm"></spc-artist-fav-browser>`],
-                [Section.AUDIOBOOK_FAVORITES, () => html`<spc-audiobook-fav-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmAudiobookFavBrowserForm"></spc-audiobook-fav-browser>`],
-                [Section.CATEGORYS, () => html`<spc-category-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmCategoryBrowserForm"></spc-category-browser>`],
-                [Section.DEVICES, () => html`<spc-device-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmDeviceBrowserForm"></spc-device-browser>`],
-                [Section.EPISODE_FAVORITES, () => html`<spc-episode-fav-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmEpisodeFavBrowserForm"></spc-episode-fav-browser>`],
-                [Section.PLAYER, () => html`<spc-player id="spcPlayer" .store=${this.store}></spc-player>`],
-                [Section.PLAYLIST_FAVORITES, () => html`<spc-playlist-fav-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmPlaylistFavBrowserForm"></spc-playlist-fav-browser>`],
-                [Section.RECENTS, () => html`<spc-recent-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmRecentBrowserForm"></spc-recents-browser>`],
-                [Section.SEARCH_MEDIA, () => html`<spc-search-media-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmSearchMediaBrowserForm"></spc-search-media-browser>`],
-                [Section.SHOW_FAVORITES, () => html`<spc-show-fav-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmShowFavBrowserForm"></spc-show-fav-browser>`],
-                [Section.TRACK_FAVORITES, () => html`<spc-track-fav-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmTrackFavBrowserForm"></spc-track-fav-browser>`],
-                [Section.USERPRESETS, () => html`<spc-userpreset-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmUserPresetBrowserForm"></spc-userpresets-browser>`],
-                [Section.UNDEFINED, () => html`<div class="spc-not-configured">SpotifyPlus card configuration error.<br/>Please configure section(s) to display.</div>`],
-              ])
-              : html`
-                  <div class="spc-initial-config">
-                    Welcome to the SpotifyPlus media player card.<br/>
-                    Start by editing the card configuration media player "entity" value.<br/>
-                    <div class="spc-not-configured">
-                      ${this.store.player.attributes.sp_config_state}
-                    </div>
-                  </div>`
-          }
+        
+        <!-- Main layout container: sidebar | content -->
+        <div class="spc-main-layout">
+          <!-- Left Sidebar (only when expanded and multiple sections) -->
+          ${when(showSidebar, () => html`
+            <div class="spc-sidebar" style=${this.styleCardFooter()}>
+              ${this.renderSidebarAccountMenu(spotifyEntities)}
+              ${spotifyEntities.length ? html`<div class="spc-sidebar-separator"></div>` : html``}
+              <spc-footer 
+                class="spc-sidebar-nav"
+                .config=${this.config}
+                .section=${this.section}
+                @show-section=${this.onFooterShowSection}
+              ></spc-footer>
+            </div>
+          `)}
+          
+          <!-- Content area -->
+          <div class="spc-content-area">
+            ${title ? html`<div class="spc-card-header" style=${this.styleCardHeader()}>${title}</div>` : ""}
+            <div class="spc-card-content-section" style=${this.styleCardContent()}>
+              ${this.store.player.id != ""
+        ? choose(this.section, [
+          [Section.ALBUM_FAVORITES, () => html`<spc-album-fav-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmAlbumFavBrowserForm"></spc-album-fav-browser>`],
+          [Section.ARTIST_FAVORITES, () => html`<spc-artist-fav-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmArtistFavBrowserForm"></spc-artist-fav-browser>`],
+          [Section.AUDIOBOOK_FAVORITES, () => html`<spc-audiobook-fav-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmAudiobookFavBrowserForm"></spc-audiobook-fav-browser>`],
+          [Section.CATEGORYS, () => html`<spc-category-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmCategoryBrowserForm"></spc-category-browser>`],
+          [Section.DEVICES, () => html`<spc-device-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmDeviceBrowserForm"></spc-device-browser>`],
+          [Section.EPISODE_FAVORITES, () => html`<spc-episode-fav-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmEpisodeFavBrowserForm"></spc-episode-fav-browser>`],
+          [Section.PLAYER, () => html`<spc-player id="spcPlayer" .store=${this.store} @minimize-player=${this.onMinimizePlayer}></spc-player>`],
+          [Section.PLAYLIST_FAVORITES, () => html`<spc-playlist-fav-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmPlaylistFavBrowserForm"></spc-playlist-fav-browser>`],
+          [Section.RECENTS, () => html`<spc-recent-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmRecentBrowserForm"></spc-recents-browser>`],
+          [Section.SEARCH_MEDIA, () => html`<spc-search-media-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmSearchMediaBrowserForm"></spc-search-media-browser>`],
+          [Section.SHOW_FAVORITES, () => html`<spc-show-fav-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmShowFavBrowserForm"></spc-show-fav-browser>`],
+          [Section.TRACK_FAVORITES, () => html`<spc-track-fav-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmTrackFavBrowserForm"></spc-track-fav-browser>`],
+          [Section.USERPRESETS, () => html`<spc-userpreset-browser .store=${this.store} @item-selected=${this.onMediaListItemSelected} id="elmUserPresetBrowserForm"></spc-userpresets-browser>`],
+          [Section.UNDEFINED, () => html`<div class="spc-not-configured">SpotifyPlus card configuration error.<br/>Please configure section(s) to display.</div>`],
+        ])
+        : html`
+                    <div class="spc-initial-config">
+                      Welcome to the SpotifyPlus media player card.<br/>
+                      Start by editing the card configuration media player "entity" value.<br/>
+                      <div class="spc-not-configured">
+                        ${this.store.player.attributes.sp_config_state}
+                      </div>
+                    </div>`
+      }
+            </div>
+          </div>
         </div>
-        ${when(showFooter, () =>
-          html`<div class="spc-card-footer-container" style=${this.styleCardFooter()}>
-            <spc-footer 
-              class="spc-card-footer"
-              .config=${this.config}
-              .section=${this.section}
-              @show-section=${this.onFooterShowSection}
-            ></spc-footer>
-          </div>`
-        )}
+        
+        ${when(this.showDevicesPopout, () => html`
+          <div class="spc-popout-backdrop" @click=${this.onDevicesPopoutClose}>
+            <div class="spc-popout" @click=${(ev: Event) => ev.stopPropagation()}>
+              <div class="spc-popout-header">
+                <div class="spc-popout-title">Devices</div>
+                <div class="spc-popout-actions">
+                  <ha-icon-button
+                    .path=${mdiRefresh}
+                    label="Refresh devices"
+                    @click=${this.onDevicesPopoutRefreshClick}
+                  ></ha-icon-button>
+                  <ha-icon-button
+                    .path=${mdiClose}
+                    label="Close devices"
+                    @click=${this.onDevicesPopoutClose}
+                  ></ha-icon-button>
+                </div>
+              </div>
+              <div class="spc-popout-body">
+                <spc-device-browser
+                  id="elmDeviceBrowserPopout"
+                  .store=${this.store}
+                  .popoutMode=${true}
+                ></spc-device-browser>
+              </div>
+            </div>
+          </div>
+        `)}
+
+        <!-- Now Playing Bar (floating at bottom when browsing) -->
+        ${when(showNowPlayingBar, () => html`
+          <div class="spc-now-playing-bar" @click=${this.onNowPlayingBarClick}>
+            <div class="spc-now-playing-row">
+              <div class="spc-now-playing-artwork" style="background-image: url('${nowPlayingArtworkUrl}')"></div>
+              <div class="spc-now-playing-info">
+                <span class="spc-now-playing-title">${this.store.player.attributes.media_title || 'No media playing'}</span>
+                <span class="spc-now-playing-artist">${this.store.player.attributes.media_artist || ''}</span>
+                ${nowPlayingDevice ? html`<span class="spc-now-playing-device">${nowPlayingDevice}</span>` : html``}
+              </div>
+              <div class="spc-now-playing-controls">
+                <ha-icon-button .path=${mdiCast} @click=${this.onNowPlayingCastClick} label="Devices"></ha-icon-button>
+                <ha-icon-button .path=${nowPlayingFavoriteIcon} @click=${this.onNowPlayingFavoriteClick} label="Like"></ha-icon-button>
+                <ha-icon-button .path=${nowPlayingPlayIcon} @click=${this.onNowPlayingPlayPauseClick} label="Play/Pause"></ha-icon-button>
+              </div>
+            </div>
+            <div class="spc-now-playing-progress">
+              <spc-player-progress .store=${this.store} .compact=${true}></spc-player-progress>
+            </div>
+          </div>
+        `)}
       </ha-card>
     `;
   }
@@ -287,7 +565,7 @@ export class Card extends AlertUpdatesBase {
         margin: 0;
       }
 
-      spotifyplus-card {
+      spotifyplusbetter-card {
         display: block;
         height: 100% !important;
         width: 100% !important;
@@ -301,64 +579,283 @@ export class Card extends AlertUpdatesBase {
       }
 
       .spc-card {
-        --spc-card-header-height: ${HEADER_HEIGHT}rem;
-        --spc-card-footer-height: ${FOOTER_HEIGHT}rem;
-        --spc-card-edit-tab-height: 0px;
-        --spc-card-edit-bottom-toolbar-height: 0px;
+        --spc-sidebar-width: 60px;
+        --spc-now-playing-height: 64px;
         box-sizing: border-box;
-        padding: 0rem;
+        padding: 0;
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        height: calc(100vh - var(--spc-card-footer-height) - var(--spc-card-edit-tab-height) - var(--spc-card-edit-bottom-toolbar-height));
-        min-width: 20rem;
-        width: calc(100vw - var(--mdc-drawer-width));
-        color: var(--secondary-text-color);
+        height: 100%;
+        width: 100%;
+        min-width: 280px;
+        color: #ffffff;
+        background-color: #121212;
+        position: relative;
+      }
+
+      /* Main horizontal layout: sidebar | content */
+      .spc-main-layout {
+        display: flex;
+        flex-direction: row;
+        flex: 1;
+        overflow: hidden;
+        height: 100%;
+      }
+
+      /* Left Sidebar */
+      .spc-sidebar {
+        width: var(--spc-sidebar-width);
+        min-width: var(--spc-sidebar-width);
+        background-color: #000000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 0.5rem 0;
+        border-right: 1px solid rgba(255, 255, 255, 0.1);
+        overflow: hidden;
+      }
+
+      .spc-sidebar-nav {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.25rem;
+        width: 100%;
+        --mdc-icon-button-size: 44px;
+        --mdc-icon-size: 24px;
+        flex: 1;
+        overflow-y: auto;
+        overflow-x: hidden;
+      }
+
+      .spc-sidebar-account {
+        padding: 0.75rem 0 0.25rem;
+        width: 100%;
+        display: flex;
+        justify-content: center;
+      }
+
+      .spc-sidebar-account-trigger {
+        --md-assist-chip-container-height: 40px;
+        --md-assist-chip-container-color: rgba(255, 255, 255, 0.08);
+        --md-assist-chip-label-text-color: #ffffff;
+        --md-assist-chip-outline-width: 1px;
+        --md-assist-chip-outline-color: rgba(255, 255, 255, 0.2);
+        border-radius: 999px;
+        transition: transform 0.1s ease, background-color 0.2s ease, border-color 0.2s ease;
+      }
+
+      .spc-sidebar-account-trigger:hover {
+        background-color: rgba(255, 255, 255, 0.16);
+        border-color: rgba(255, 255, 255, 0.4);
+        transform: scale(1.05);
+      }
+
+      .spc-sidebar-account-initial {
+        font-weight: 700;
+        font-size: 1.05rem;
+        letter-spacing: 0.04em;
+        line-height: 1;
+      }
+
+      .spc-sidebar-separator {
+        width: 70%;
+        height: 1px;
+        background-color: rgba(255, 255, 255, 0.12);
+        margin: 0.25rem 0 0.5rem;
+      }
+
+      /* Content area (takes remaining space) */
+      .spc-content-area {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        min-width: 0;
       }
 
       .spc-card-header {
         box-sizing: border-box;
-        padding: 0.2rem;
+        padding: 0.5rem 1rem;
         display: flex;
-        align-self: flex-start;
         align-items: center;
-        justify-content: space-around;
+        justify-content: center;
         width: 100%;
-        font-weight: bold;
-        font-size: 1.2rem;
-        color: var(--secondary-text-color);
+        font-weight: 600;
+        font-size: 0.875rem;
+        color: #ffffff;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        background: rgba(0, 0, 0, 0.3);
       }
 
       .spc-card-content-section {
-        margin: 0.0rem;
-        flex-grow: 1;
-        flex-shrink: 0;
-        height: 1vh;
+        flex: 1;
         overflow: hidden;
       }
 
-      .spc-card-footer-container {
-        width: 100%;
+      /* Now Playing Bar (minimized state) */
+      .spc-now-playing-bar {
+        height: var(--spc-now-playing-height);
+        min-height: var(--spc-now-playing-height);
+        background-color: #181818;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
         display: flex;
-        align-items: center;
-        background-repeat: no-repeat;
-        background-color: var(--spc-footer-background-color, var(--spc-player-footer-bg-color, var(--card-background-color, transparent)));
-        background-image: var(--spc-footer-background-image, linear-gradient(rgba(0, 0, 0, 0.6), rgb(0, 0, 0)));
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: center;
+        padding: 0.25rem 1rem 0.2rem;
+        gap: 0.25rem;
+        cursor: pointer;
+        transition: background-color 0.2s ease;
       }
 
-      .spc-card-footer {
-        margin: 0.2rem;
+      .spc-now-playing-bar:hover {
+        background-color: #282828;
+      }
+
+      .spc-now-playing-row {
         display: flex;
-        align-self: flex-start;
         align-items: center;
-        justify-content: space-around;
-        flex-wrap: wrap;
+        gap: 0.75rem;
         width: 100%;
-        --mdc-icon-button-size: var(--spc-footer-icon-button-size, 2.5rem);
-        --mdc-icon-size: var(--spc-footer-icon-size, 1.75rem);
-        --mdc-ripple-top: 0px;
-        --mdc-ripple-left: 0px;
-        --mdc-ripple-fg-size: 10px;
+      }
+
+      .spc-now-playing-artwork {
+        width: 48px;
+        height: 48px;
+        min-width: 48px;
+        background-size: cover;
+        background-position: center;
+        background-color: #282828;
+        border-radius: 4px;
+      }
+
+      .spc-now-playing-info {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .spc-now-playing-title {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: #ffffff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .spc-now-playing-artist {
+        font-size: 0.75rem;
+        color: #b3b3b3;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .spc-now-playing-device {
+        font-size: 0.7rem;
+        color: #1DB954;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .spc-now-playing-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        --mdc-icon-button-size: 40px;
+        --mdc-icon-size: 24px;
+      }
+
+      .spc-now-playing-controls ha-icon-button {
+        color: #ffffff;
+        padding: 0;
+      }
+
+      .spc-now-playing-progress {
+        width: 100%;
+      }
+
+      .spc-now-playing-progress spc-player-progress {
+        display: block;
+      }
+
+      .spc-popout-backdrop {
+        position: absolute;
+        inset: 0;
+        background-color: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1100;
+      }
+
+      .spc-popout {
+        width: min(90%, 36rem);
+        max-height: 90%;
+        background-color: #121212;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+      }
+
+      .spc-popout-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.35rem 0.75rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        background-color: #1b1b1b;
+      }
+
+      .spc-popout-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: #ffffff;
+        letter-spacing: 0.02em;
+      }
+
+      .spc-popout-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+      }
+
+      .spc-popout-actions ha-icon-button {
+        --mdc-icon-button-size: 32px;
+        --mdc-icon-size: 20px;
+      }
+
+      .spc-popout-body {
+        flex: 1;
+        overflow: hidden;
+      }
+
+      /* Minimized state - hide sidebar, show now playing bar */
+      .spc-card.spc-minimized .spc-main-layout {
+        display: none;
+      }
+
+      /* Responsive: switch to bottom bar on narrow screens */
+      @media (max-width: 500px) {
+        .spc-sidebar {
+          display: none !important;
+        }
+        
+        .spc-card.spc-expanded::after {
+          content: '';
+          display: block;
+        }
       }
 
       .spc-loader {
@@ -379,11 +876,11 @@ export class Card extends AlertUpdatesBase {
       .spc-initial-config {
         text-align: center;
         margin-top: 1rem;
+        color: #b3b3b3;
       }
 
       ha-icon-button {
-        padding-left: 1rem;
-        padding-right: 1rem;
+        padding: 0;
       }
     `;
   }
@@ -403,9 +900,10 @@ export class Card extends AlertUpdatesBase {
     // set card editor indicator.
     this.isCardInEditPreview = isCardInEditPreview(this);
 
-    // have we set the player id yet?  if not, then make it so.
-    if (!this.playerId) {
+    // ensure player id matches config entity.
+    if (this.playerId !== this.config.entity) {
       this.playerId = this.config.entity;
+      this.isFirstTimeSetup = true;
     }
 
     // is this the first time executing?
@@ -476,6 +974,11 @@ export class Card extends AlertUpdatesBase {
       // set the active section.
       this.section = section;
       this.store.section = this.section;
+      this.playerExpanded = true;
+      this.showDevicesPopout = false;
+      if (section !== Section.PLAYER && section !== Section.DEVICES) {
+        this.lastNonPlayerSection = section;
+      }
       super.requestUpdate();
 
     } else {
@@ -512,6 +1015,7 @@ export class Card extends AlertUpdatesBase {
     this.addEventListener(SEARCH_MEDIA, this.onSearchMediaEventHandler);
     this.addEventListener(CATEGORY_DISPLAY, this.onCategoryDisplayEventHandler);
     this.addEventListener(FILTER_SECTION_MEDIA, this.onFilterSectionMediaEventHandler);
+    this.addEventListener(DEVICES_POPOUT_TOGGLE, this.onDevicesPopoutToggle);
 
     // add document level event listeners.
     document.addEventListener(EDITOR_CONFIG_AREA_SELECTED, this.onEditorConfigAreaSelectedEventHandler);
@@ -536,6 +1040,7 @@ export class Card extends AlertUpdatesBase {
     this.removeEventListener(SEARCH_MEDIA, this.onSearchMediaEventHandler);
     this.removeEventListener(CATEGORY_DISPLAY, this.onCategoryDisplayEventHandler);
     this.removeEventListener(FILTER_SECTION_MEDIA, this.onFilterSectionMediaEventHandler);
+    this.removeEventListener(DEVICES_POPOUT_TOGGLE, this.onDevicesPopoutToggle);
 
     // remove document level event listeners.
     document.removeEventListener(EDITOR_CONFIG_AREA_SELECTED, this.onEditorConfigAreaSelectedEventHandler);
@@ -563,7 +1068,7 @@ export class Card extends AlertUpdatesBase {
 
     // ensure "<search-input-outlined>" and "<ha-md-button-menu>" HA customElements are
     // loaded so that the controls are rendered properly.
-    //(async () => await loadHaFormLazyControls())();
+    (async () => await loadHaFormLazyControls())();
 
     // if there are things that you only want to happen one time when the configuration
     // is initially loaded, then do them here.
@@ -623,6 +1128,21 @@ export class Card extends AlertUpdatesBase {
 
 
   /**
+   * Invoked after an update cycle completes.
+   */
+  protected updated(changedProperties: PropertyValues): void {
+
+    super.updated(changedProperties);
+
+    if (changedProperties.has('playerMediaContentId')) {
+      this.isNowPlayingFavorite = undefined;
+      this.updateNowPlayingFavoriteStatus();
+    }
+
+  }
+
+
+  /**
    * Handles the card configuration editor `EDITOR_CONFIG_AREA_SELECTED` event.
    * 
    * This will select a section for display / rendering.
@@ -674,15 +1194,40 @@ export class Card extends AlertUpdatesBase {
     const section = args.detail;
     if (!this.config.sections || this.config.sections.indexOf(section) > -1) {
 
-      this.section = section;
-      this.store.section = this.section;
-      super.requestUpdate();
+      this.SetSection(section);
 
     } else {
 
       // specified section is not active.
 
     }
+  }
+
+
+  /**
+   * Handles the player `minimize-player` event.
+   * 
+   * Finds the first available non-Player section to navigate to.
+   */
+  protected onMinimizePlayer = () => {
+    const sections = this.config.sections || [];
+
+    // Prefer last known non-player section; fall back to first non-player (excluding devices).
+    const lastSection = this.lastNonPlayerSection;
+    const targetSection = (lastSection && sections.includes(lastSection))
+      ? lastSection
+      : sections.find(s => s !== Section.PLAYER && s !== Section.DEVICES);
+
+    if (targetSection) {
+      this.SetSection(targetSection);
+      return;
+    }
+
+    // No other section available; collapse to now-playing bar only.
+    this.playerExpanded = false;
+    this.section = Section.PLAYER;
+    this.store.section = this.section;
+    super.requestUpdate();
   }
 
 
@@ -901,8 +1446,7 @@ export class Card extends AlertUpdatesBase {
     if (this.config.sections?.includes(Section.CATEGORYS)) {
 
       // show the category section.
-      this.section = Section.CATEGORYS;
-      this.store.section = this.section;
+      this.SetSection(Section.CATEGORYS);
 
       // wait just a bit before displaying the category.
       setTimeout(() => {
@@ -980,13 +1524,15 @@ export class Card extends AlertUpdatesBase {
     // to speed up comparison when imageUrl's are loaded later on.  we will also
     // replace any spaces in the imageUrl with "%20" to make it url friendly.
     const customImageUrlsTemp = <CustomImageUrls>{};
-    for (const itemTitle in (newConfig.customImageUrls)) {
-      const title = removeSpecialChars(itemTitle);
-      let imageUrl = newConfig.customImageUrls[itemTitle];
-      imageUrl = imageUrl?.replace(' ', '%20');
-      customImageUrlsTemp[title] = imageUrl;
+    if (newConfig.customImageUrls) {
+      for (const itemTitle in newConfig.customImageUrls) {
+        const title = removeSpecialChars(itemTitle);
+        let imageUrl = newConfig.customImageUrls[itemTitle];
+        imageUrl = imageUrl?.replace(' ', '%20');
+        customImageUrlsTemp[title] = imageUrl;
+      }
+      newConfig.customImageUrls = customImageUrlsTemp;
     }
-    newConfig.customImageUrls = customImageUrlsTemp;
 
     // if no sections are configured then configure the default.
     if (!newConfig.sections || newConfig.sections.length === 0) {
@@ -1047,8 +1593,8 @@ export class Card extends AlertUpdatesBase {
       cardUniqueId: uuidv4(),
 
       sections: [Section.PLAYER, Section.ALBUM_FAVORITES, Section.ARTIST_FAVORITES, Section.PLAYLIST_FAVORITES,
-        Section.RECENTS, Section.DEVICES, Section.TRACK_FAVORITES, Section.USERPRESETS, Section.AUDIOBOOK_FAVORITES, 
-        Section.SHOW_FAVORITES, Section.EPISODE_FAVORITES, Section.SEARCH_MEDIA],
+      Section.RECENTS, Section.DEVICES, Section.TRACK_FAVORITES, Section.USERPRESETS, Section.AUDIOBOOK_FAVORITES,
+      Section.SHOW_FAVORITES, Section.EPISODE_FAVORITES, Section.SEARCH_MEDIA],
       entity: "",
 
       playerHeaderTitle: "{player.source}",
@@ -1378,17 +1924,14 @@ export class Card extends AlertUpdatesBase {
     }
     if (footerBackgroundImage)
       styleInfo['--spc-footer-background-image'] = `${footerBackgroundImage}`;
+
+    // Always use Spotify charcoal for footer - ignore vibrant colors
     if (footerBackgroundColor) {
       styleInfo['--spc-footer-background-color'] = `${footerBackgroundColor}`;
     } else {
-      // is player selected, and a footer background color set?
-      // if so, then return vibrant background style;
-      // otherwise, let background color default to the card background color.
-      if ((this.section == Section.PLAYER) && (this.vibrantColorVibrant)) {
-        styleInfo['--spc-player-footer-bg-color'] = `${this.footerBackgroundColor || 'transparent'}`;
-      } else {
-        styleInfo['background'] = `unset`;
-      }
+      // Fixed Spotify dark theme - no dynamic colors
+      styleInfo['--spc-footer-background-color'] = '#121212';
+      styleInfo['--spc-player-footer-bg-color'] = '#121212';
     }
 
     return styleMap(styleInfo);

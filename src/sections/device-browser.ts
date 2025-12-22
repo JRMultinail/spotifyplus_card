@@ -5,7 +5,7 @@ const debuglog = Debug(DEBUG_APP_NAME + ":device-browser");
 
 // lovelace card imports.
 import { html, PropertyValues, TemplateResult } from 'lit';
-import { customElement } from 'lit/decorators.js';
+import { customElement, property } from 'lit/decorators.js';
 
 // our imports.
 import '../components/media-browser-list';
@@ -20,6 +20,7 @@ import { ISpotifyConnectDevice } from '../types/spotifyplus/spotify-connect-devi
 import {
   EDITOR_DEFAULT_BROWSER_ITEMS_PER_ROW,
 } from '../constants';
+import { DevicesPopoutToggleEvent } from '../events/devices-popout-toggle';
 
 
 @customElement("spc-device-browser")
@@ -30,6 +31,9 @@ export class DeviceBrowser extends FavBrowserBase {
 
   /** True to refresh device list from real-time data; False to refresh from internal cache. */
   private refreshDeviceList?: boolean;
+
+  /** True when the device browser is shown in a popout instead of a full section. */
+  @property({ attribute: false }) public popoutMode: boolean = false;
 
 
   /**
@@ -53,6 +57,10 @@ export class DeviceBrowser extends FavBrowserBase {
 
     // invoke base class method.
     super.render();
+    if (this.popoutMode) {
+      this.mediaBrowserControlsStyle = { display: 'none' };
+      this.filterCriteria = "";
+    }
 
     // filter items (if actions are not visible).
     let filteredItems: Array<ISpotifyConnectDevice> | undefined;
@@ -63,8 +71,8 @@ export class DeviceBrowser extends FavBrowserBase {
     }
 
     // format title and sub-title details.
-    const title = formatTitleInfo(this.config.deviceBrowserTitle, this.config, this.player, this.mediaListLastUpdatedOn, this.mediaList, filteredItems);
-    const subtitle = formatTitleInfo(this.config.deviceBrowserSubTitle, this.config, this.player, this.mediaListLastUpdatedOn, this.mediaList, filteredItems);
+    const title = this.popoutMode ? undefined : formatTitleInfo(this.config.deviceBrowserTitle, this.config, this.player, this.mediaListLastUpdatedOn, this.mediaList, filteredItems);
+    const subtitle = this.popoutMode ? undefined : formatTitleInfo(this.config.deviceBrowserSubTitle, this.config, this.player, this.mediaListLastUpdatedOn, this.mediaList, filteredItems);
 
     // load default # of items per row to display.
     if (!this.favBrowserItemsPerRow) {
@@ -76,7 +84,7 @@ export class DeviceBrowser extends FavBrowserBase {
       <div class="media-browser-section" style=${this.styleMediaBrowser()}>
         ${title ? html`<div class="media-browser-section-title">${title}</div>` : html``}
         ${subtitle ? html`<div class="media-browser-section-subtitle">${subtitle}</div>` : html``}
-        <div class="media-browser-controls">
+        <div class="media-browser-controls" style=${this.styleMediaBrowserControls()}>
           ${!(this.isActionsVisible || false) ? html`` : html`${this.btnHideActionsHtml}`}
           ${this.filterCriteriaHtml}${this.formatMediaListHtml}${this.refreshMediaListHtml}
         </div>
@@ -87,22 +95,28 @@ export class DeviceBrowser extends FavBrowserBase {
             // if actions are not visbile, then render the media list.
             if (!this.isActionsVisible) {
               if ((this.config.deviceBrowserItemsPerRow || 1) === 1) {
+                const listScale = this.popoutMode ? '1.2' : '';
                 return (
                   html`<spc-media-browser-list
                         class="media-browser-list"
+                        style=${listScale ? `--spc-media-browser-list-scale: ${listScale};` : ''}
                         .items=${filteredItems}
                         .itemsPerRow=${this.favBrowserItemsPerRow}
+                        .sectionOverride=${Section.DEVICES}
                         .store=${this.store}
                         @item-selected=${this.onItemSelected}
                         @item-selected-with-hold=${this.onItemSelectedWithHold}
                        ></spc-media-browser-list>`
                 )
               } else {
+                const listScale = this.popoutMode ? '1.2' : '';
                 return (
                   html`<spc-media-browser-icons
                         class="media-browser-list"
+                        style=${listScale ? `--spc-media-browser-list-scale: ${listScale};` : ''}
                         .items=${filteredItems}
                         .itemsPerRow=${this.favBrowserItemsPerRow}
+                        .sectionOverride=${Section.DEVICES}
                         .store=${this.store}
                         @item-selected=${this.onItemSelected}
                         @item-selected-with-hold=${this.onItemSelectedWithHold}
@@ -147,6 +161,16 @@ export class DeviceBrowser extends FavBrowserBase {
       this.updateMediaList(this.player);
     }
 
+  }
+
+
+  /**
+   * Refreshes the device list, bypassing the cache.
+   */
+  public refreshList(): void {
+    this.refreshDeviceList = true;
+    this.storageValuesClear();
+    this.updateMediaList(this.player);
   }
 
 
@@ -216,8 +240,12 @@ export class DeviceBrowser extends FavBrowserBase {
       // select the source.
       await this.store.mediaControlService.select_source(this.player, deviceId);
 
-      // show player section.
-      this.store.card.SetSection(Section.PLAYER);
+      if (this.popoutMode) {
+        this.dispatchEvent(DevicesPopoutToggleEvent(false));
+      } else {
+        // show player section.
+        this.store.card.SetSection(Section.PLAYER);
+      }
 
     }
     catch (error) {

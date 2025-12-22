@@ -9,74 +9,80 @@ export const sharedStylesMediaInfo = css`
     display: flex;
     flex-wrap: wrap;
     align-items: flex-start;
-    width: inherit;
-    gap: 0.25rem;
+    width: 100%;
+    gap: 0.5rem;
     margin: 0.25rem;
   }
 
   .media-info-content > div {
-    flex: max(23rem, 100%/3 + 0.1%);  /* flexbox is responsive */
-    /*border: 1px solid blue;*/       /* FOR TESTING LAYOUT */
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .media-info-content .img {
     background-size: contain !important;
     background-repeat: no-repeat !important;
     background-position: center !important;
-    max-width: 128px;
-    min-height: 128px;
-    border-radius: var(--control-button-border-radius, 10px) !important;
-    background-size: cover !important;
+    max-width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 8px !important;
+    object-fit: contain;
   }
 
   .media-info-description {
     overflow-y: auto;
-    scrollbar-color: var(--primary-text-color) var(--secondary-background-color);
-    scrollbar-width: inherit;
+    scrollbar-color: #4d4d4d #121212;
+    scrollbar-width: thin;
     display: block;
     height: inherit;  
-    padding-top: 10px;
+    padding-top: 0.5rem;
+    color: #b3b3b3;
   }
 
   .media-info-details {
     display: flex;
     flex: 1 1 0%;
     flex-direction: column;
-    max-width: 400rem;
+    max-width: 100%;
     margin: 0.5rem;
   }
 
   .media-info-text-l {
-    font-size: 2.1rem;
-    font-weight: 400;
-    line-height: 1.8rem;
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.3;
     padding-bottom: 0.5rem;
     width: 100%;
-    color: var(--dark-primary-color);
+    color: #ffffff;
+    letter-spacing: -0.01em;
   }
 
   .media-info-text-ms, .media-info-text-ms-c {
-    font-size: 1.2rem;
-    line-height: 1.5rem;
-    padding-bottom: 0.20rem;
+    font-size: 1rem;
+    line-height: 1.4;
+    padding-bottom: 0.25rem;
     width: 100%;
+    color: #b3b3b3;
   }
 
   .media-info-text-ms-c {
-    color: var(--dark-primary-color);
+    color: #1DB954;
   }
 
   .media-info-text-m {
-    font-size: 1.5rem;
-    line-height: 1.8rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+    line-height: 1.3;
     padding-bottom: 0.5rem;
     width: 100%;
+    color: #ffffff;
   }
 
   .media-info-text-s {
-    font-size: 0.85rem;
-    line-height: 1rem;
+    font-size: 0.8rem;
+    line-height: 1.3;
     width: 100%;
+    color: #b3b3b3;
   }
 
   ha-icon-button[slot="media-info-icon-link-s"] {

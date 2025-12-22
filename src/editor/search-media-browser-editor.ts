@@ -65,6 +65,12 @@ const CONFIG_SETTINGS_SCHEMA = [
     valueMax: 12,
   },
   {
+    name: 'searchMediaBrowserFilterDisabled',
+    label: 'Disable filter input',
+    required: false,
+    selector: { boolean: {} },
+  },
+  {
     name: 'searchMediaBrowserItemsHideTitle',
     label: 'Hide item row title text',
     required: false,

@@ -43,6 +43,7 @@ export class MediaBrowserBase extends LitElement {
   @property({ attribute: false }) protected items!: any[];
   @property({ attribute: false }) protected itemsPerRow!: number;
   @property({ attribute: false }) protected searchMediaType!: any;
+  @property({ attribute: false }) public sectionOverride?: Section;
 
   protected config!: CardConfig;
   protected section!: Section;
@@ -90,7 +91,7 @@ export class MediaBrowserBase extends LitElement {
 
     // set common references from application common storage area.
     this.config = this.store.config;
-    this.section = this.store.section;
+    this.section = this.sectionOverride || this.store.section;
 
     // set title / source visibility based on selected section.
     this.hideTitle = true;

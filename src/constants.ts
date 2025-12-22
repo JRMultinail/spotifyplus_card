@@ -10,7 +10,27 @@ export const DOMAIN_SPOTIFYPLUS = 'spotifyplus';
 export const DOMAIN_MEDIA_PLAYER = 'media_player';
 
 /** debug application name. */
-export const DEBUG_APP_NAME = 'spotifyplus-card';
+export const DEBUG_APP_NAME = 'spotifyplusbetter-card';
+
+// ============================================================================
+// Spotify Color Palette
+// ============================================================================
+/** Spotify primary black background */
+export const SPOTIFY_BLACK = '#121212';
+/** Spotify brand green */
+export const SPOTIFY_GREEN = '#1DB954';
+/** Spotify dark gray (darker surfaces) */
+export const SPOTIFY_DARK_GRAY = '#191414';
+/** Spotify elevated surface */
+export const SPOTIFY_SURFACE = '#181818';
+/** Spotify hover surface */
+export const SPOTIFY_SURFACE_HOVER = '#282828';
+/** Spotify subdued text color */
+export const SPOTIFY_LIGHT_GRAY = '#b3b3b3';
+/** Spotify white text */
+export const SPOTIFY_WHITE = '#ffffff';
+/** Spotify progress track color */
+export const SPOTIFY_PROGRESS_TRACK = '#4d4d4d';
 
 /** prefix used for event dispatching to make them unique throughtout the system. */
 const dispatchPrefix = 'spc-dispatch-event-';
@@ -47,13 +67,13 @@ export const RADIO_SEARCH_KEY = " Radio ";
 export const FOOTER_ICON_SIZE_DEFAULT = '1.75rem';
 
 /** default color value of the player header / controls background gradient. */
-export const PLAYER_CONTROLS_BACKGROUND_COLOR_DEFAULT = '#000000BB';
+export const PLAYER_CONTROLS_BACKGROUND_COLOR_DEFAULT = '#121212';
 
 /** default size of the icons in the Player controls area. */
 export const PLAYER_CONTROLS_ICON_SIZE_DEFAULT = '2.0rem';
 
 /** default color of toggled icons in the Player controls area. */
-export const PLAYER_CONTROLS_ICON_TOGGLE_COLOR_DEFAULT = '#2196F3';
+export const PLAYER_CONTROLS_ICON_TOGGLE_COLOR_DEFAULT = '#1DB954';
 
 /** default size of the player background image. */
 export const PLAYER_BACKGROUND_IMAGE_SIZE_DEFAULT = "100% 100%";

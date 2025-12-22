@@ -105,7 +105,7 @@ export class CategoryBrowser extends FavBrowserBase {
       <div class="media-browser-section" style=${this.styleMediaBrowser()}>
         ${title ? html`<div class="media-browser-section-title">${title}</div>` : html``}
         ${subtitle ? html`<div class="media-browser-section-subtitle">${subtitle}</div>` : html``}
-        <div class="media-browser-controls">
+        <div class="media-browser-controls" style=${this.styleMediaBrowserControls()}>
           ${(this.isActionsVisible || this.isCategoryVisible || false) ?html`${this.btnHideActionsHtml}` : html``}
           ${this.filterCriteriaHtml}${this.formatMediaListHtml}${this.refreshMediaListHtml}
         </div>

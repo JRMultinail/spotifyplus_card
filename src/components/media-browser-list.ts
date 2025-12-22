@@ -113,22 +113,26 @@ export class MediaBrowserList extends MediaBrowserBase {
   static get styles() {
     return [
       css`
+        :host {
+          --spc-media-browser-list-scale: 0.5;
+        }
+
         .button {
           --control-button-padding: 0px;
-          --icon-width: 94px;
+          --icon-width: calc(var(--spc-media-browser-list-scale, 1) * 94px);
           height: var(--icon-width);
-          margin: 0.4rem 0.0rem;
+          margin: calc(var(--spc-media-browser-list-scale, 1) * 0.4rem) 0.0rem;
         }
 
         .button-device {
-          --icon-width: 50px !important;
-          margin: 0 !important;
+          --icon-width: calc(var(--spc-media-browser-list-scale, 1) * 50px) !important;
+          margin: calc(var(--spc-media-browser-list-scale, 1) * 0.1rem) 0 !important;
         }
 
         .button-track {
-          --icon-width: 80px !important;
-          margin: 0 !important;
-          padding: 0.25rem;
+          --icon-width: calc(var(--spc-media-browser-list-scale, 1) * 80px) !important;
+          margin: calc(var(--spc-media-browser-list-scale, 1) * 0.1rem) 0 !important;
+          padding: calc(var(--spc-media-browser-list-scale, 1) * 0.25rem);
         }
 
         .row {

@@ -98,6 +98,7 @@ export class FavBrowserBase extends AlertUpdatesBase {
   protected refreshMediaListHtml;
   protected formatMediaListHtml;
   protected btnHideActionsHtml;
+  protected mediaBrowserControlsStyle: StyleInfo = {};
 
   // bound event listeners for event handlers that need access to "this" object.
   private onKeyDown_EventListenerBound;
@@ -157,8 +158,22 @@ export class FavBrowserBase extends AlertUpdatesBase {
     this.isFilterCriteriaReadOnly = false;
     this.isFilterCriteriaVisible = true;
 
+    const filterDisabled = this.isFilterDisabled();
+    const hideControls = filterDisabled && !(this.isActionsVisible || false);
+    this.mediaBrowserControlsStyle = hideControls ? { display: 'none' } : {};
+    if (filterDisabled) {
+      this.isFilterCriteriaVisible = false;
+      if (this.mediaType === Section.SEARCH_MEDIA) {
+        // allow search to proceed with existing criteria, but disallow edits.
+        this.isFilterCriteriaReadOnly = true;
+      } else {
+        // clear filter for non-search sections when disabled.
+        this.filterCriteria = "";
+      }
+    }
+
     // define control to render - search criteria.
-    this.filterCriteriaHtml = html`
+    this.filterCriteriaHtml = filterDisabled ? html`` : html`
       <search-input-outlined id="filterCriteria" 
         class="media-browser-control-filter"
         .hass=${this.hass}
@@ -172,7 +187,7 @@ export class FavBrowserBase extends AlertUpdatesBase {
       `;
 
     // define control to render - search criteria (readonly).
-    this.filterCriteriaReadOnlyHtml = html`
+    this.filterCriteriaReadOnlyHtml = filterDisabled ? html`` : html`
       <span id="filterCriteriaDisabled" 
         class="media-browser-control-filter-disabled"
       >${this.filterCriteria}</span>
@@ -254,6 +269,14 @@ export class FavBrowserBase extends AlertUpdatesBase {
       styleInfo['--spc-media-browser-items-svgicon-color'] = `${mediaBrowserItemsSvgIconColor}`;
     return styleMap(styleInfo);
 
+  }
+
+
+  /**
+   * Returns a style map for media browser controls visibility.
+   */
+  protected styleMediaBrowserControls() {
+    return styleMap(this.mediaBrowserControlsStyle || {});
   }
 
 
@@ -854,6 +877,46 @@ export class FavBrowserBase extends AlertUpdatesBase {
 
     // indicate caller can refresh it's media list.
     return true;
+  }
+
+
+  /**
+   * Returns true if filter input should be disabled for the current section.
+   */
+  private isFilterDisabled(): boolean {
+
+    if (!this.config) {
+      return false;
+    }
+
+    switch (this.mediaType) {
+      case Section.ALBUM_FAVORITES:
+        return this.config.albumFavBrowserFilterDisabled || false;
+      case Section.ARTIST_FAVORITES:
+        return this.config.artistFavBrowserFilterDisabled || false;
+      case Section.AUDIOBOOK_FAVORITES:
+        return this.config.audiobookFavBrowserFilterDisabled || false;
+      case Section.CATEGORYS:
+        return this.config.categoryBrowserFilterDisabled || false;
+      case Section.DEVICES:
+        return this.config.deviceBrowserFilterDisabled || false;
+      case Section.EPISODE_FAVORITES:
+        return this.config.episodeFavBrowserFilterDisabled || false;
+      case Section.PLAYLIST_FAVORITES:
+        return this.config.playlistFavBrowserFilterDisabled || false;
+      case Section.RECENTS:
+        return this.config.recentBrowserFilterDisabled || false;
+      case Section.SEARCH_MEDIA:
+        return this.config.searchMediaBrowserFilterDisabled || false;
+      case Section.SHOW_FAVORITES:
+        return this.config.showFavBrowserFilterDisabled || false;
+      case Section.TRACK_FAVORITES:
+        return this.config.trackFavBrowserFilterDisabled || false;
+      case Section.USERPRESETS:
+        return this.config.userPresetBrowserFilterDisabled || false;
+      default:
+        return false;
+    }
   }
 
 

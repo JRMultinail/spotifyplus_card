@@ -71,7 +71,7 @@ export class ArtistFavBrowser extends FavBrowserBase {
       <div class="media-browser-section" style=${this.styleMediaBrowser()}>
         ${title ? html`<div class="media-browser-section-title">${title}</div>` : html``}
         ${subtitle ? html`<div class="media-browser-section-subtitle">${subtitle}</div>` : html``}
-        <div class="media-browser-controls">
+        <div class="media-browser-controls" style=${this.styleMediaBrowserControls()}>
           ${!(this.isActionsVisible || false) ? html`` : html`${this.btnHideActionsHtml}`}
           ${this.filterCriteriaHtml}${this.formatMediaListHtml}${this.refreshMediaListHtml}
         </div>
