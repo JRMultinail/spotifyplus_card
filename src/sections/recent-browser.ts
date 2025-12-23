@@ -20,6 +20,8 @@ import { GetTracks } from '../types/spotifyplus/track-page-saved';
 import { ITrack } from '../types/spotifyplus/track';
 import {
   ALERT_ERROR_SPOTIFY_PREMIUM_REQUIRED,
+  DEVICE_TRANSFER_OVERRIDE_WINDOW_MS,
+  DEVICE_TRANSFER_POST_TRANSFER_WAIT_MS,
   EDITOR_DEFAULT_BROWSER_ITEMS_PER_ROW,
 } from '../constants';
 
@@ -126,7 +128,7 @@ export class RecentBrowser extends FavBrowserBase {
    * 
    * @param evArgs Event arguments that contain the media item that was clicked on.
    */
-  protected override onItemSelected(evArgs: CustomEvent) {
+  protected override async onItemSelected(evArgs: CustomEvent) {
 
     if (debuglog.enabled) {
       debuglog("onItemSelected - media item selected:\n%s",
@@ -150,9 +152,14 @@ export class RecentBrowser extends FavBrowserBase {
       // build track uri list from media list.
       const { uris } = getMediaListTrackUrisRemaining(this.mediaList || [], mediaItem);
 
+      const deviceIdOverride = await this.store.prepareDevicePlayback(
+        DEVICE_TRANSFER_OVERRIDE_WINDOW_MS,
+        DEVICE_TRANSFER_POST_TRANSFER_WAIT_MS,
+      );
+
       // play the selected track, as well as the remaining tracks.
       // also disable shuffle, as we want to play the selected track first.
-      this.spotifyPlusService.PlayerMediaPlayTracks(this.player, uris.join(","), null, null, null, false);
+      await this.spotifyPlusService.PlayerMediaPlayTracks(this.player, uris.join(","), null, deviceIdOverride, null, false);
 
       // show player section.
       this.store.card.SetSection(Section.PLAYER);

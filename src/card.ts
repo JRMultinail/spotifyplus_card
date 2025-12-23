@@ -63,6 +63,7 @@ import { CATEGORY_DISPLAY, CategoryDisplayEventArgs } from './events/category-di
 import { SEARCH_MEDIA, SearchMediaEventArgs } from './events/search-media';
 import { DEVICES_POPOUT_TOGGLE } from './events/devices-popout-toggle';
 import { Store } from './model/store';
+import { getIdFromSpotifyUri, getTypeFromSpotifyUri } from './services/spotifyplus-service';
 import { Section } from './types/section';
 import { ConfigArea } from './types/config-area';
 import { CardConfig } from './types/card-config';
@@ -95,6 +96,10 @@ const CARD_PICK_PREVIEW_WIDTH = '100%';
 
 const EDIT_TAB_HEIGHT = '48px';
 const EDIT_BOTTOM_TOOLBAR_HEIGHT = '59px';
+const POLL_INTERVAL_DEFAULT_SECONDS = 5;
+const POLL_INTERVAL_MIN_SECONDS = 2;
+const POLL_INTERVAL_MAX_SECONDS = 300;
+const AUTO_TURN_ON_COOLDOWN_MS = 30000;
 
 // Good source of help documentation on HA custom cards:
 // https://gist.github.com/thomasloven/1de8c62d691e754f95b023105fe4b74b
@@ -166,6 +171,37 @@ export class Card extends AlertUpdatesBase {
 
   /** Indicates if an async update is in progress (true) or not (false). */
   protected isUpdateInProgressAsync!: boolean;
+
+  /** Polling interval timer id (if enabled). */
+  private pollIntervalId?: number;
+
+  /** Active polling interval in seconds (if enabled). */
+  private pollIntervalSeconds?: number;
+
+  /** True while a poll request is in flight. */
+  private isPollInFlight: boolean = false;
+
+  /** Last time (epoch ms) an auto turn on attempt occurred. */
+  private lastAutoTurnOnAt: number = 0;
+
+  private appendUrlParam(url: string, key: string, value: string): string {
+    if (!url) {
+      return url;
+    }
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+  }
+
+  private buildArtworkUrl(rawUrl?: string, cacheKey?: string): string {
+    if (!rawUrl) {
+      return '';
+    }
+    const baseUrl = this.hass.hassUrl(rawUrl);
+    if (!cacheKey) {
+      return baseUrl;
+    }
+    return this.appendUrlParam(baseUrl, 'spc_cache', cacheKey);
+  }
 
 
   /**
@@ -249,22 +285,47 @@ export class Card extends AlertUpdatesBase {
   /**
    * Handles favorite toggle from the now playing bar.
    */
+  private getNowPlayingTrackId(): string | undefined {
+    const attrs = this.store?.player?.attributes;
+    if (!attrs) {
+      return undefined;
+    }
+
+    const playingType = attrs.sp_item_type || attrs.sp_playing_type || attrs.media_content_type;
+    if (playingType && playingType !== 'track' && playingType !== 'music') {
+      return undefined;
+    }
+
+    const uriCandidate = attrs.sp_track_uri_origin || attrs.media_content_id;
+    if (!uriCandidate) {
+      return undefined;
+    }
+
+    const uriType = getTypeFromSpotifyUri(uriCandidate);
+    if (uriType !== 'track') {
+      return undefined;
+    }
+
+    return getIdFromSpotifyUri(uriCandidate) || undefined;
+  }
+
   private async onNowPlayingFavoriteClick(ev: Event): Promise<void> {
     ev.stopPropagation();
 
-    if (this.store.player.attributes.sp_item_type !== 'track') {
+    const trackId = this.getNowPlayingTrackId();
+    if (!trackId) {
       this.alertInfoSet("Favorites are only supported for tracks.");
       return;
     }
 
     try {
       this.progressShow();
-      const result = await this.store.spotifyPlusService.CheckTrackFavorites(this.store.player, null);
-      const isFavorite = Object.values(result)[0] || false;
+      const result = await this.store.spotifyPlusService.CheckTrackFavorites(this.store.player, trackId);
+      const isFavorite = result[trackId] || Object.values(result)[0] || false;
       if (isFavorite) {
-        await this.store.spotifyPlusService.RemoveTrackFavorites(this.store.player, null);
+        await this.store.spotifyPlusService.RemoveTrackFavorites(this.store.player, trackId);
       } else {
-        await this.store.spotifyPlusService.SaveTrackFavorites(this.store.player, null);
+        await this.store.spotifyPlusService.SaveTrackFavorites(this.store.player, trackId);
       }
       this.isNowPlayingFavorite = !isFavorite;
     } catch (error) {
@@ -278,14 +339,19 @@ export class Card extends AlertUpdatesBase {
    * Refresh favorite status for the currently playing track.
    */
   private async updateNowPlayingFavoriteStatus(): Promise<void> {
-    if (!this.store?.player || this.store.player.attributes.sp_item_type !== 'track') {
+    if (!this.store?.player) {
       this.isNowPlayingFavorite = undefined;
       return;
     }
 
     try {
-      const result = await this.store.spotifyPlusService.CheckTrackFavorites(this.store.player, null);
-      this.isNowPlayingFavorite = Object.values(result)[0] || false;
+      const trackId = this.getNowPlayingTrackId();
+      if (!trackId) {
+        this.isNowPlayingFavorite = undefined;
+        return;
+      }
+      const result = await this.store.spotifyPlusService.CheckTrackFavorites(this.store.player, trackId);
+      this.isNowPlayingFavorite = result[trackId] || Object.values(result)[0] || false;
     } catch {
       this.isNowPlayingFavorite = undefined;
     }
@@ -425,7 +491,9 @@ export class Card extends AlertUpdatesBase {
     const nowPlayingFavoriteIcon = this.isNowPlayingFavorite ? mdiHeart : mdiHeartOutline;
     const nowPlayingPlayIcon = this.store.player.isPlaying() ? mdiPause : mdiPlay;
     const nowPlayingArtwork = this.store.player.attributes.entity_picture || this.store.player.attributes.entity_picture_local;
-    const nowPlayingArtworkUrl = nowPlayingArtwork ? this.hass.hassUrl(nowPlayingArtwork) : (this.playerImage || '');
+    const nowPlayingArtworkUrl = nowPlayingArtwork
+      ? this.buildArtworkUrl(nowPlayingArtwork, this.store.player.attributes.media_content_id)
+      : (this.playerImage || '');
 
     // check for background image changes.
     this.checkForBackgroundImageChange();
@@ -1045,6 +1113,9 @@ export class Card extends AlertUpdatesBase {
     // remove document level event listeners.
     document.removeEventListener(EDITOR_CONFIG_AREA_SELECTED, this.onEditorConfigAreaSelectedEventHandler);
 
+    // stop polling.
+    this.clearPolling();
+
     // invoke base class method.
     super.disconnectedCallback();
   }
@@ -1134,11 +1205,97 @@ export class Card extends AlertUpdatesBase {
 
     super.updated(changedProperties);
 
+    if (changedProperties.has('config') || changedProperties.has('hass')) {
+      this.setupPolling();
+    }
+
     if (changedProperties.has('playerMediaContentId')) {
       this.isNowPlayingFavorite = undefined;
       this.updateNowPlayingFavoriteStatus();
     }
 
+  }
+
+
+  /**
+   * Initialize or update polling based on configuration settings.
+   */
+  private setupPolling(): void {
+    if (!this.hass || !this.config) {
+      return;
+    }
+
+    const pollSecondsValue = Number(this.config.pollIntervalSeconds);
+    const pollSeconds = Number.isFinite(pollSecondsValue)
+      ? pollSecondsValue
+      : POLL_INTERVAL_DEFAULT_SECONDS;
+
+    if (pollSeconds <= 0) {
+      this.clearPolling();
+      return;
+    }
+
+    const clampedSeconds = Math.max(POLL_INTERVAL_MIN_SECONDS, Math.min(POLL_INTERVAL_MAX_SECONDS, pollSeconds));
+    if (this.pollIntervalId && this.pollIntervalSeconds === clampedSeconds) {
+      return;
+    }
+
+    this.clearPolling();
+    this.pollIntervalSeconds = clampedSeconds;
+    this.pollIntervalId = window.setInterval(() => {
+      this.pollPlaybackState();
+    }, clampedSeconds * 1000);
+
+    this.pollPlaybackState();
+  }
+
+
+  /**
+   * Stop polling if it is active.
+   */
+  private clearPolling(): void {
+    if (this.pollIntervalId) {
+      clearInterval(this.pollIntervalId);
+      this.pollIntervalId = undefined;
+    }
+    this.pollIntervalSeconds = undefined;
+  }
+
+
+  /**
+   * Polls SpotifyPlus state and optionally keeps the player on.
+   */
+  private async pollPlaybackState(): Promise<void> {
+    if (this.isPollInFlight || !this.hass || !this.config?.entity) {
+      return;
+    }
+
+    this.isPollInFlight = true;
+    try {
+      if (this.config.deviceDefaultId && this.store?.player?.isPoweredOffOrUnknown()) {
+        const now = Date.now();
+        if (now - this.lastAutoTurnOnAt > AUTO_TURN_ON_COOLDOWN_MS) {
+          this.lastAutoTurnOnAt = now;
+          try {
+            await this.store.spotifyPlusService.turn_on(this.store.player);
+          } catch (error) {
+            if (debuglog.enabled) {
+              debuglog("pollPlaybackState - auto turn on failed: %s", JSON.stringify(getHomeAssistantErrorMessage(error)));
+            }
+          }
+        }
+      }
+
+      await this.hass.callService(DOMAIN_SPOTIFYPLUS, 'trigger_scan_interval', {
+        entity_id: this.config.entity,
+      });
+    } catch (error) {
+      if (debuglog.enabled) {
+        debuglog("pollPlaybackState - trigger_scan_interval failed: %s", JSON.stringify(getHomeAssistantErrorMessage(error)));
+      }
+    } finally {
+      this.isPollInFlight = false;
+    }
   }
 
 
@@ -2049,7 +2206,7 @@ export class Card extends AlertUpdatesBase {
         // create image object, and allow cross-origin to avoid CORS errors.
         const img = new Image();
         img.crossOrigin = 'Anonymous';
-        img.src = playerImageSaved + '?not-from-cache-please';
+        img.src = this.appendUrlParam(playerImageSaved, 'spc_cache', playerMediaContentIdSaved || 'nocache');
 
         // create vibrant instance with our desired options.
         const vibrant: Vibrant = new Vibrant(img, vibrantOptions);
@@ -2152,6 +2309,9 @@ export class Card extends AlertUpdatesBase {
 
       // clear the progress indicator.
       //this.progressHide();
+
+      // allow future background updates after an error.
+      this.isUpdateInProgressAsync = false;
 
       // set alert error message.
       this.checkForBackgroundImageChangeError("Background Image processing error: " + getHomeAssistantErrorMessage(error));

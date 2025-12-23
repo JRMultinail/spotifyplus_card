@@ -9,6 +9,7 @@ import {
 } from '../constants';
 import { MediaBrowserBase } from './media-browser-base';
 import { IMediaBrowserItem } from '../types/media-browser-item';
+import { Section } from '../types/section';
 import { customEvent, formatStringProperCase } from '../utils/utils';
 
 
@@ -41,6 +42,11 @@ export class MediaBrowserList extends MediaBrowserBase {
           return html`
             ${this.styleMediaBrowserItemBackgroundImage(item.mbi_item.image_url, index)}
             ${(() => {
+              // Determine if playing bars should be shown.
+              // For devices, use is_playing (set on the item). For other items, use is_active && isPlaying().
+              const isDevice = this.mediaItemType === Section.DEVICES;
+              const showBars = isDevice ? item.mbi_item.is_playing : (item.mbi_item.is_active && this.store.player.isPlaying());
+
               if (this.isTouchDevice) {
                 return (html`
                   <mwc-list-item
@@ -49,11 +55,8 @@ export class MediaBrowserList extends MediaBrowserBase {
                     @touchstart=${{handleEvent: () => this.onMediaBrowserItemTouchStart(customEvent(ITEM_SELECTED, item)), passive: true }}
                     @touchend=${() => this.onMediaBrowserItemTouchEnd(customEvent(ITEM_SELECTED, item))}
                   >
-                    <div class="row">${this.renderMediaBrowserItem(item, !item.mbi_item.image_url || !this.hideTitle, !this.hideSubTitle)}</div>
-                    ${when(
-                      item.mbi_item.is_active && this.store.player.isPlaying(),
-                      () => html`${this.nowPlayingBars}`,
-                    )}
+                    <div class="row">${this.renderMediaBrowserItem(item, !item.mbi_item.image_url || !this.hideTitle, !this.hideSubTitle, isDevice)}</div>
+                    ${when(showBars, () => html`${this.nowPlayingBars}`)}
                   </mwc-list-item>
                 `);
               } else {
@@ -65,11 +68,8 @@ export class MediaBrowserList extends MediaBrowserBase {
                     @mousedown=${() => this.onMediaBrowserItemMouseDown()}
                     @mouseup=${() => this.onMediaBrowserItemMouseUp(customEvent(ITEM_SELECTED, item))}
                   >
-                    <div class="row">${this.renderMediaBrowserItem(item, !item.mbi_item.image_url || !this.hideTitle, !this.hideSubTitle)}</div>
-                    ${when(
-                      item.mbi_item.is_active && this.store.player.isPlaying(),
-                      () => html`${this.nowPlayingBars}`,
-                    )}
+                    <div class="row">${this.renderMediaBrowserItem(item, !item.mbi_item.image_url || !this.hideTitle, !this.hideSubTitle, isDevice)}</div>
+                    ${when(showBars, () => html`${this.nowPlayingBars}`)}
                   </mwc-list-item>
                 `);
               }
@@ -88,6 +88,7 @@ export class MediaBrowserList extends MediaBrowserBase {
     item: IMediaBrowserItem,
     showTitle: boolean = true,
     showSubTitle: boolean = true,
+    isDevice: boolean = false,
   ) {
 
     let clsActive = ''
@@ -95,7 +96,18 @@ export class MediaBrowserList extends MediaBrowserBase {
       clsActive = ' title-active';
     }
 
+    // For devices, show a status indicator (empty circle or green tick).
+    const deviceIndicator = isDevice
+      ? html`<div class="device-status ${item.mbi_item.is_active ? 'device-active' : ''}">
+          ${item.mbi_item.is_active
+            ? html`<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>`
+            : html`<svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z"/></svg>`
+          }
+        </div>`
+      : html``;
+
     return html`
+      ${deviceIndicator}
       <div class="thumbnail"></div>
       <div class="title${clsActive}" ?hidden=${!showTitle}>
         ${item.mbi_item.title}
@@ -137,6 +149,28 @@ export class MediaBrowserList extends MediaBrowserBase {
 
         .row {
           display: flex;
+          align-items: center;
+        }
+
+        /* Device status indicator styles */
+        .device-status {
+          width: 20px;
+          height: 20px;
+          min-width: 20px;
+          margin-right: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .device-status svg {
+          width: 18px;
+          height: 18px;
+          fill: var(--secondary-text-color, #888);
+        }
+
+        .device-status.device-active svg {
+          fill: var(--success-color, #4caf50);
         }
 
         .thumbnail {

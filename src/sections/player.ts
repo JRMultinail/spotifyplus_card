@@ -51,7 +51,13 @@ export class Player extends AlertUpdatesBase {
   private getArtworkUrl(): string {
     const playerImage = this.player.attributes.entity_picture || this.player.attributes.entity_picture_local;
     if (playerImage) {
-      return this.store.hass.hassUrl(playerImage);
+      const baseUrl = this.store.hass.hassUrl(playerImage);
+      const mediaContentId = this.player.attributes.media_content_id;
+      if (!mediaContentId) {
+        return baseUrl;
+      }
+      const separator = baseUrl.includes('?') ? '&' : '?';
+      return `${baseUrl}${separator}spc_cache=${encodeURIComponent(mediaContentId)}`;
     }
     return '';
   }
@@ -76,6 +82,7 @@ export class Player extends AlertUpdatesBase {
     // Get track info
     const trackTitle = this.player.attributes.media_title || 'No Media Playing';
     const artistName = this.player.attributes.media_artist || '';
+    const mediaContentId = this.player.attributes.media_content_id || '';
 
     // Check if queue should be hidden
     const hideQueue = this.config.playerControlsHidePlayQueue || false;
@@ -112,7 +119,7 @@ export class Player extends AlertUpdatesBase {
             <spc-player-controls 
               class="player-controls-inline"
               .store=${this.store}
-              .mediaContentId=${this.mediaContentId}
+              .mediaContentId=${mediaContentId}
               .hideQueue=${true}
             ></spc-player-controls>
           </div>
@@ -136,7 +143,7 @@ export class Player extends AlertUpdatesBase {
               ></ha-icon-button>
             </div>
             <div class="player-queue-content">
-              ${(() => {
+                  ${(() => {
           if (isOffIdle && this.config.playerMinimizeOnIdle && this.config.height != "fill") {
             return html`<div class="player-queue-empty">Player is idle</div>`;
           } else if (this.player.attributes.sp_item_type == 'track' ||
@@ -145,7 +152,7 @@ export class Player extends AlertUpdatesBase {
             return html`<spc-player-body-queue 
                     class="player-queue-list" 
                     .store=${this.store} 
-                    .mediaContentId=${this.mediaContentId} 
+                    .mediaContentId=${mediaContentId} 
                     id="elmPlayerBodyQueue"
                   ></spc-player-body-queue>`;
           } else {

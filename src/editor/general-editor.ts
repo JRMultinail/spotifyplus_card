@@ -58,6 +58,23 @@ const CONFIG_SETTINGS_SCHEMA = [
     type: 'string',
   },
   {
+    name: 'deviceDefaultId',
+    label: 'Default device name / id for SpotifyPlus service calls',
+    help: 'used to auto-activate the player when it is off',
+    required: false,
+    type: 'string',
+  },
+  {
+    name: 'pollIntervalSeconds',
+    label: 'Polling interval (seconds)',
+    help: 'set to 0 to disable; default is 5',
+    required: false,
+    type: 'integer',
+    default: 5,
+    valueMin: 0,
+    valueMax: 300,
+  },
+  {
     name: 'width',
     label: 'Width of the card',
     help: 'in rem units; or "fill" for 100% width',

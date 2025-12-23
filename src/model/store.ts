@@ -52,6 +52,14 @@ export class Store {
   /** Currently selected section. */
   public section: Section;
 
+  /** Most recently selected device id (name or id) for transfers. */
+  public lastDeviceTransferId?: string;
+
+  /** Timestamp (epoch ms) of the last device transfer selection. */
+  public lastDeviceTransferAt?: number;
+
+  /** True if the last device transfer was to a restricted device. */
+  public lastDeviceTransferIsRestricted?: boolean;
   /** Currently selected ConfigArea **/
   static selectedConfigArea: ConfigArea = ConfigArea.GENERAL;
 
@@ -88,6 +96,79 @@ export class Store {
     if (debuglog.enabled) {
     }
 
+  }
+
+
+  /**
+   * Records a device transfer selection so playback can target it shortly after.
+   */
+  public markDeviceTransfer(deviceId: string, isRestricted: boolean = false): void {
+    if (!deviceId) {
+      return;
+    }
+    this.lastDeviceTransferId = deviceId;
+    this.lastDeviceTransferAt = Date.now();
+    this.lastDeviceTransferIsRestricted = isRestricted;
+  }
+
+
+  /**
+   * Returns recent device transfer info if still within the provided window.
+   */
+  public getRecentDeviceTransferInfo(windowMs: number): { id: string; isRestricted: boolean } | undefined {
+    if (!this.lastDeviceTransferId || !this.lastDeviceTransferAt) {
+      return undefined;
+    }
+    if (Date.now() - this.lastDeviceTransferAt > windowMs) {
+      this.lastDeviceTransferId = undefined;
+      this.lastDeviceTransferAt = undefined;
+      this.lastDeviceTransferIsRestricted = undefined;
+      return undefined;
+    }
+    return {
+      id: this.lastDeviceTransferId,
+      isRestricted: this.lastDeviceTransferIsRestricted || false,
+    };
+  }
+
+
+  /**
+   * Waits briefly after a transfer and syncs player state before playback.
+   */
+  public async prepareDevicePlayback(windowMs: number, waitMs: number): Promise<string | undefined> {
+    const recent = this.getRecentDeviceTransferInfo(windowMs);
+    if (!recent) {
+      return undefined;
+    }
+
+    if (recent.isRestricted) {
+      try {
+        await this.hass.callService(DOMAIN_SPOTIFYPLUS, 'player_transfer_playback', {
+          entity_id: this.config.entity,
+          device_id: recent.id,
+          play: false,
+          force_activate_device: true,
+        });
+      } catch {
+      }
+    }
+
+    const effectiveWaitMs = recent.isRestricted ? waitMs + 1500 : waitMs;
+    if (effectiveWaitMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, effectiveWaitMs));
+    }
+
+    try {
+      await this.hass.callService(DOMAIN_SPOTIFYPLUS, 'trigger_scan_interval', {
+        entity_id: this.config.entity,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    } catch {
+    }
+
+    this.player = this.getMediaPlayerObject();
+
+    return recent.isRestricted ? undefined : recent.id;
   }
 
 

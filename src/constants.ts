@@ -81,6 +81,12 @@ export const PLAYER_BACKGROUND_IMAGE_SIZE_DEFAULT = "100% 100%";
 /** default editor value for media browser items per row settings. */
 export const EDITOR_DEFAULT_BROWSER_ITEMS_PER_ROW = 4;
 
+/** How long a recent device transfer remains eligible for playback targeting. */
+export const DEVICE_TRANSFER_OVERRIDE_WINDOW_MS = 5000;
+
+/** Wait time after a device transfer before starting playback. */
+export const DEVICE_TRANSFER_POST_TRANSFER_WAIT_MS = 1500;
+
 
 export const listStyle = css`
   .list {

@@ -16,11 +16,15 @@ import { Section } from '../types/section';
 import { MediaPlayer } from '../model/media-player';
 import { formatTitleInfo } from '../utils/media-browser-utils';
 import { getHomeAssistantErrorMessage, getUtcNowTimestamp } from '../utils/utils';
+import { HomeAssistant } from '../types/home-assistant-frontend/home-assistant';
 import { ISpotifyConnectDevice } from '../types/spotifyplus/spotify-connect-device';
 import {
+  DOMAIN_SPOTIFYPLUS,
   EDITOR_DEFAULT_BROWSER_ITEMS_PER_ROW,
 } from '../constants';
 import { DevicesPopoutToggleEvent } from '../events/devices-popout-toggle';
+import { MediaPlayerState } from '../services/media-control-service';
+import { PlayerBodyQueue } from '../components/player-body-queue';
 
 
 @customElement("spc-device-browser")
@@ -158,6 +162,7 @@ export class DeviceBrowser extends FavBrowserBase {
       }
 
       // auto-refresh device list every time we display the section (if not in edit mode).
+      this.refreshDeviceList = true;
       this.updateMediaList(this.player);
     }
 
@@ -224,8 +229,24 @@ export class DeviceBrowser extends FavBrowserBase {
       // show progress indicator.
       this.progressShow();
 
-      // update status.
-      this.alertInfo = "Transferring playback to device \"" + mediaItem.Name + "\" ...";
+      const isActiveDevice = this.isDeviceActive(mediaItem);
+
+      if (debuglog.enabled) {
+        debuglog("SelectSource - device=%s, isActiveDevice=%s, deviceId=%s",
+          mediaItem.Name, isActiveDevice, mediaItem.Id);
+      }
+
+      // Always log to console for debugging
+      console.log("SelectSource - device:", mediaItem.Name, "isActiveDevice:", isActiveDevice,
+        "deviceId:", mediaItem.Id, "playerDeviceId:", this.player.attributes.sp_device_id,
+        "playerDeviceName:", this.player.attributes.sp_device_name);
+
+      if (isActiveDevice) {
+        this.alertInfo = "Loading playback from device \"" + mediaItem.Name + "\" ...";
+      } else {
+        // update status.
+        this.alertInfo = "Transferring playback to device \"" + mediaItem.Name + "\" ...";
+      }
 
       // transfer by device id by default; for Sonos, always use device name (restricted device).
       let deviceId = '';
@@ -237,8 +258,24 @@ export class DeviceBrowser extends FavBrowserBase {
         deviceId = mediaItem.Id || mediaItem.Name || '';
       }
 
-      // select the source.
-      await this.store.mediaControlService.select_source(this.player, deviceId);
+      if (deviceId) {
+        const isRestricted = !!(mediaItem.IsRestricted || mediaItem.IsSonos);
+        this.store.markDeviceTransfer(deviceId, isRestricted);
+      }
+
+      // select the source if it is not already active.
+      if (!isActiveDevice) {
+        const shouldPlay = this.shouldResumePlayback();
+        await this.store.hass.callService(DOMAIN_SPOTIFYPLUS, 'player_transfer_playback', {
+          entity_id: this.config.entity,
+          device_id: deviceId,
+          play: shouldPlay,
+        });
+      }
+
+      // force a refresh of playback state so UI updates immediately.
+      await this.refreshPlaybackState();
+      this.refreshPlaybackState(1000);
 
       if (this.popoutMode) {
         this.dispatchEvent(DevicesPopoutToggleEvent(false));
@@ -262,6 +299,100 @@ export class DeviceBrowser extends FavBrowserBase {
 
     }
 
+  }
+
+
+  /**
+   * Returns true if the device is already the active playback device.
+   * Uses player attributes as the source of truth (not the potentially stale IsActiveDevice flag).
+   */
+  private isDeviceActive(mediaItem: ISpotifyConnectDevice): boolean {
+    const playerDeviceId = this.player.attributes.sp_device_id || '';
+    const playerDeviceName = this.player.attributes.sp_device_name || '';
+
+    if (debuglog.enabled) {
+      debuglog("isDeviceActive - checking device: %s (id: %s) against player: deviceId=%s, deviceName=%s",
+        mediaItem.Name, mediaItem.Id, playerDeviceId, playerDeviceName);
+    }
+
+    // Match by device ID if both the player and device have IDs
+    if (playerDeviceId && mediaItem.Id && mediaItem.Id === playerDeviceId) {
+      return true;
+    }
+
+    // Fall back to name matching if IDs don't match or aren't available
+    if (playerDeviceName && mediaItem.Name === playerDeviceName) {
+      return true;
+    }
+
+    return false;
+  }
+
+
+  /**
+   * Returns true if transfer should resume playback.
+   */
+  private shouldResumePlayback(): boolean {
+    const isPlaying = this.player.isPlaying() || this.player.state === MediaPlayerState.BUFFERING;
+    if (!isPlaying) {
+      return false;
+    }
+
+    const playingType = (this.player.attributes.sp_playing_type || '').toLowerCase();
+    const itemType = (this.player.attributes.sp_item_type || '').toLowerCase();
+    const hasContentId = !!this.player.attributes.media_content_id;
+    const hasKnownType = (playingType && playingType !== 'unknown') || !!itemType;
+
+    return hasContentId || hasKnownType;
+  }
+
+
+  /**
+   * Refreshes playback state, optionally after a delay.
+   */
+  private async refreshPlaybackState(delayMs: number = 0): Promise<void> {
+    if (delayMs > 0) {
+      window.setTimeout(() => {
+        void this.refreshPlaybackState();
+      }, delayMs);
+      return;
+    }
+
+    try {
+      await this.store.hass.callService(DOMAIN_SPOTIFYPLUS, 'trigger_scan_interval', {
+        entity_id: this.config.entity,
+      });
+      this.syncPlayerState();
+      this.refreshQueueIfVisible();
+    } catch (error) {
+      if (debuglog.enabled) {
+        debuglog("SelectSource - trigger_scan_interval failed: %s", JSON.stringify(getHomeAssistantErrorMessage(error)));
+      }
+    }
+  }
+
+
+  /**
+   * Syncs store player state with latest hass data and requests a UI update.
+   */
+  private syncPlayerState(): void {
+    const card = this.store.card as { hass?: unknown; requestUpdate?: () => void } | undefined;
+    if (card?.hass) {
+      this.store.hass = card.hass as HomeAssistant;
+      this.store.player = this.store.getMediaPlayerObject();
+      card.requestUpdate?.();
+    }
+  }
+
+
+  /**
+   * Refreshes the queue list if the player queue element is available.
+   */
+  private refreshQueueIfVisible(): void {
+    const card = this.store.card as { shadowRoot?: ShadowRoot } | undefined;
+    const playerElement = card?.shadowRoot?.querySelector('spc-player') as HTMLElement | null;
+    const queueElement = playerElement?.shadowRoot?.querySelector('#elmPlayerBodyQueue') as PlayerBodyQueue | null;
+    queueElement?.refreshQueueItems();
   }
 
 

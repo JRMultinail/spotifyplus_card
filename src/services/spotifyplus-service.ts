@@ -4889,6 +4889,7 @@ export class SpotifyPlusService {
   public async Card_PlayMediaBrowserItem(
     player: MediaPlayer,
     mediaItem: any,
+    device_id: string | undefined | null = null,
   ): Promise<void> {
 
     // spotify premium account (or elevated credentials) required for this function.
@@ -4921,12 +4922,12 @@ export class SpotifyPlusService {
       if (['album', 'artist', 'playlist', 'show', 'audiobook', 'podcast'].indexOf(uriType) > -1) {
 
         // play context.
-        await this.PlayerMediaPlayContext(player, mediaItem.uri || '');
+        await this.PlayerMediaPlayContext(player, mediaItem.uri || '', null, null, null, device_id);
 
       } else if (['track', 'episode', 'chapter'].indexOf(uriType) > -1) {
 
         // play track / episode / chapter.
-        await this.PlayerMediaPlayTracks(player, mediaItem.uri || '');
+        await this.PlayerMediaPlayTracks(player, mediaItem.uri || '', null, device_id);
 
       } else {
 

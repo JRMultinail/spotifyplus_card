@@ -537,6 +537,7 @@ export class MediaBrowserBase extends LitElement {
         title: item.name || item.Name,
         subtitle: item.type,
         is_active: false,
+        is_playing: false,
       };
 
       // modify subtitle value based on selected section type.
@@ -589,19 +590,24 @@ export class MediaBrowserBase extends LitElement {
         const device = (item as ISpotifyConnectDevice);
         mbi_info.title = device.Name;
         mbi_info.subtitle = (device.DeviceInfo.BrandDisplayName || "unknown") + ", " + (device.DeviceInfo.ModelDisplayName || "unknown");
-        // set is_active flag based on the device id selected;
-        // if no device_id, then use the device name.
-        if ((device.Id || "") != "") {
-          if (device.Id == this.store.player.attributes.sp_device_id) {
-            mbi_info.is_active = true;
-          } else {
-            mbi_info.is_active = false;
-          }
-        } else if (device.Name == this.store.player.attributes.source) {
+
+        // Determine active device using player attributes as the primary source of truth.
+        const playerDeviceId = this.store.player.attributes.sp_device_id || '';
+        const playerDeviceName = this.store.player.attributes.sp_device_name || '';
+
+        // Match by device ID if both the player and device have IDs
+        if (playerDeviceId && device.Id && device.Id === playerDeviceId) {
+          mbi_info.is_active = true;
+        } else if (playerDeviceName && device.Name === playerDeviceName) {
+          // Fall back to name matching if IDs don't match or aren't available
           mbi_info.is_active = true;
         } else {
           mbi_info.is_active = false;
         }
+
+        // set is_playing flag - device is playing if it's the active device and player is playing.
+        // This allows playing bars to show on any device that is actively playing audio.
+        mbi_info.is_playing = mbi_info.is_active && this.store.player.isPlaying();
 
       } else if (this.mediaItemType == Section.EPISODE_FAVORITES) {
 

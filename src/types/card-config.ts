@@ -72,6 +72,13 @@ export interface CardConfig extends LovelaceCardConfig {
   touchSupportDisabled?: boolean;
 
   /**
+   * Poll interval in seconds for refreshing playback state.
+   * Set to 0 to disable polling.
+   * Default is 5.
+   */
+  pollIntervalSeconds?: number;
+
+  /**
    * Title displayed at the top of the Album Favorites media browser section form.
    * Omit this parameter to hide the title display area.
    * This value supports Title Formatter Options.

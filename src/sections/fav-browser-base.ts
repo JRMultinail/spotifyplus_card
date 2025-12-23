@@ -16,7 +16,11 @@ import {
 } from '@mdi/js';
 
 // our imports.
-import { DOMAIN_SPOTIFYPLUS } from '../constants';
+import {
+  DEVICE_TRANSFER_OVERRIDE_WINDOW_MS,
+  DEVICE_TRANSFER_POST_TRANSFER_WAIT_MS,
+  DOMAIN_SPOTIFYPLUS
+} from '../constants';
 import { sharedStylesFavBrowser } from '../styles/shared-styles-fav-browser.js';
 import { CardConfig } from '../types/card-config';
 import { Section } from '../types/section';
@@ -696,6 +700,11 @@ export class FavBrowserBase extends AlertUpdatesBase {
       // show progress indicator.
       this.progressShow();
 
+      const deviceIdOverride = await this.store.prepareDevicePlayback(
+        DEVICE_TRANSFER_OVERRIDE_WINDOW_MS,
+        DEVICE_TRANSFER_POST_TRANSFER_WAIT_MS,
+      );
+
       if (debuglog.enabled) {
         debuglog("PlayMediaItem \n- shuffleOnPlay = %s\n- player.attributes.shuffle = %s",
           JSON.stringify(this.shuffleOnPlay),
@@ -709,7 +718,7 @@ export class FavBrowserBase extends AlertUpdatesBase {
       }
 
       // play media item.
-      await this.spotifyPlusService.Card_PlayMediaBrowserItem(this.player, mediaItem);
+      await this.spotifyPlusService.Card_PlayMediaBrowserItem(this.player, mediaItem, deviceIdOverride);
 
       // show player section.
       this.store.card.SetSection(Section.PLAYER);

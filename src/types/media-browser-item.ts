@@ -27,6 +27,13 @@ export interface IMediaBrowserInfo {
    */
   is_active: boolean | null;
 
+
+  /**
+   * Indicates if the item is currently playing (true) or not (false).
+   * For devices, this indicates if the device is actively playing audio.
+   */
+  is_playing: boolean | null;
+
 }
 
 
