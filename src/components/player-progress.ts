@@ -177,10 +177,11 @@ class Progress extends AlertUpdatesBase {
    */
   private trackProgress() {
 
-    // get current track positioning from media player attributes.
-    const position = this.player?.attributes.media_position || 0;
-    const playing = this.player?.isPlaying();
-    const updatedAt = this.player?.attributes.media_position_updated_at || 0;
+    // get current track positioning from store (always fresh).
+    const player = this.store?.player;
+    const position = player?.attributes.media_position || 0;
+    const playing = player?.isPlaying();
+    const updatedAt = player?.attributes.media_position_updated_at || 0;
 
     // calculate progress.
     if (playing) {

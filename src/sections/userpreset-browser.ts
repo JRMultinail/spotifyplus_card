@@ -21,8 +21,6 @@ import { CategoryDisplayEvent } from '../events/category-display';
 import { FilterSectionMediaEvent } from '../events/filter-section-media';
 import {
   ALERT_ERROR_SPOTIFY_PREMIUM_REQUIRED,
-  DEVICE_TRANSFER_OVERRIDE_WINDOW_MS,
-  DEVICE_TRANSFER_POST_TRANSFER_WAIT_MS,
   EDITOR_DEFAULT_BROWSER_ITEMS_PER_ROW,
 } from '../constants';
 
@@ -86,11 +84,11 @@ export class UserPresetBrowser extends FavBrowserBase {
           ${this.alertError ? html`<ha-alert alert-type="error" dismissable @alert-dismissed-clicked=${this.alertErrorClear}>${this.alertError}</ha-alert>` : ""}
           ${this.alertInfo ? html`<ha-alert alert-type="info" dismissable @alert-dismissed-clicked=${this.alertInfoClear}>${this.alertInfo}</ha-alert>` : ""}
           ${(() => {
-            // if actions are not visbile, then render the media list.
-            if (!this.isActionsVisible) {
-              if (this.favBrowserItemsPerRow === 1) {
-                return (
-                  html`<spc-media-browser-list 
+        // if actions are not visbile, then render the media list.
+        if (!this.isActionsVisible) {
+          if (this.favBrowserItemsPerRow === 1) {
+            return (
+              html`<spc-media-browser-list 
                         class="media-browser-list"
                         .items=${filteredItems}
                         .itemsPerRow=${this.favBrowserItemsPerRow}
@@ -98,10 +96,10 @@ export class UserPresetBrowser extends FavBrowserBase {
                         @item-selected=${this.onItemSelected}
                         @item-selected-with-hold=${this.onItemSelectedWithHold}
                        ></spc-media-browser-list>`
-                )
-              } else {
-                return (
-                  html`<spc-media-browser-icons 
+            )
+          } else {
+            return (
+              html`<spc-media-browser-icons 
                         class="media-browser-list"
                         .items=${filteredItems}
                         .itemsPerRow=${this.favBrowserItemsPerRow}
@@ -109,13 +107,13 @@ export class UserPresetBrowser extends FavBrowserBase {
                         @item-selected=${this.onItemSelected}
                         @item-selected-with-hold=${this.onItemSelectedWithHold}
                        ></spc-media-browser-icons>`
-                )
-              }
-            // if actions are visbile, then render the actions display.
-            } else {
-              return html`<spc-userpreset-actions class="media-browser-actions" .store=${this.store} .mediaItem=${this.mediaItem}></spc-userpreset-actions>`;
-            }
-          })()}  
+            )
+          }
+          // if actions are visbile, then render the actions display.
+        } else {
+          return html`<spc-userpreset-actions class="media-browser-actions" .store=${this.store} .mediaItem=${this.mediaItem}></spc-userpreset-actions>`;
+        }
+      })()}  
         </div>
       </div>
     `;
@@ -148,7 +146,7 @@ export class UserPresetBrowser extends FavBrowserBase {
       // validate filter section name.
       const enumValues: string[] = Object.values(Section);
       if (!enumValues.includes(preset.filter_section || "")) {
-      //if (Object.values(Section) as string[]).includes(preset.filter_section || "") {
+        //if (Object.values(Section) as string[]).includes(preset.filter_section || "") {
         this.alertErrorSet("Preset filter_section \"" + preset.filter_section + "\" is not a valid section identifier.");
         return;
       }
@@ -240,11 +238,7 @@ export class UserPresetBrowser extends FavBrowserBase {
 
       // play the selected track, as well as the remaining tracks.
       // also disable shuffle, as we want to play the selected track first.
-        const deviceIdOverride = await this.store.prepareDevicePlayback(
-          DEVICE_TRANSFER_OVERRIDE_WINDOW_MS,
-          DEVICE_TRANSFER_POST_TRANSFER_WAIT_MS,
-        );
-        await this.spotifyPlusService.PlayerMediaPlayTracks(this.player, uris.join(","), null, deviceIdOverride, null, false);
+      await this.spotifyPlusService.PlayerMediaPlayTracks(this.player, uris.join(","), null, null, null, false);
 
       // show player section.
       this.store.card.SetSection(Section.PLAYER);

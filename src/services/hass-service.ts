@@ -16,7 +16,7 @@ import { MediaPlayerItem, TemplateResult } from '../types';
 export class HassService {
 
   /** Home Assistant instance. */
-  private readonly hass: HomeAssistant;
+  public hass: HomeAssistant;
 
 
   /**
@@ -25,6 +25,16 @@ export class HassService {
    * @param hass Home Assistant instance.
    */
   constructor(hass: HomeAssistant) {
+    this.hass = hass;
+  }
+
+
+  /**
+   * Updates the Home Assistant instance.
+   * 
+   * @param hass Home Assistant instance.
+   */
+  public updateHass(hass: HomeAssistant) {
     this.hass = hass;
   }
 

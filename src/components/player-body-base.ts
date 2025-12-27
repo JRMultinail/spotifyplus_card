@@ -238,11 +238,14 @@ export class PlayerBodyBase extends AlertUpdatesBase {
       return false;
     }
 
-    // if no media content id, then don't bother.
-    if (!this.player.attributes.media_content_id) {
+    const hasMediaContentId = !!this.player.attributes.media_content_id;
+    const hasMediaTitle = !!this.player.attributes.media_title;
+
+    // if no media content id or media title, then don't bother.
+    if (!hasMediaContentId && !hasMediaTitle) {
       this.isUpdateInProgress = false;
       if (debuglog.enabled) {
-        debuglog("updateActions - player media_content_id reference not set; ignoring updateActions request");
+        debuglog("updateActions - player media_content_id/media_title not set; ignoring updateActions request");
       }
       return false;
     }

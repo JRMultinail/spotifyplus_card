@@ -1401,7 +1401,20 @@ export class Card extends AlertUpdatesBase {
 
     // example: show the card Player section (after a slight delay).
     //setTimeout(() => (this.SetSection(Section.PLAYER)), 1500);
+    this.refreshNowPlayingQueue();
 
+  }
+
+
+  /**
+   * Triggers a refresh of the now playing queue after a short delay.
+   */
+  private refreshNowPlayingQueue(delayMs: number = 600): void {
+    setTimeout(() => {
+      const playerElement = this.shadowRoot?.querySelector('spc-player') as HTMLElement | null;
+      const queueElement = playerElement?.shadowRoot?.querySelector('#elmPlayerBodyQueue') as { refreshQueueItems?: () => void } | null;
+      queueElement?.refreshQueueItems?.();
+    }, delayMs);
   }
 
 

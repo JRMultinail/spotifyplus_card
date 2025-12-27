@@ -11,11 +11,7 @@ import {
 } from '@mdi/js';
 
 // our imports.
-import {
-  ALERT_ERROR_SPOTIFY_PREMIUM_REQUIRED,
-  DEVICE_TRANSFER_OVERRIDE_WINDOW_MS,
-  DEVICE_TRANSFER_POST_TRANSFER_WAIT_MS,
-} from '../constants';
+import { ALERT_ERROR_SPOTIFY_PREMIUM_REQUIRED, DOMAIN_SPOTIFYPLUS } from '../constants';
 import { sharedStylesGrid } from '../styles/shared-styles-grid.js';
 import { sharedStylesMediaInfo } from '../styles/shared-styles-media-info.js';
 import { sharedStylesFavActions } from '../styles/shared-styles-fav-actions.js';
@@ -25,6 +21,8 @@ import { PlayerBodyBase } from './player-body-base';
 import { MediaPlayer } from '../model/media-player';
 import { IPlayerQueueInfo } from '../types/spotifyplus/player-queue-info';
 import { ITrack } from '../types/spotifyplus/track';
+import { GetPlaylistPageTracks } from '../types/spotifyplus/playlist-page';
+import { getIdFromSpotifyUri, getTypeFromSpotifyUri } from '../services/spotifyplus-service';
 
 /**
  * Track actions.
@@ -40,6 +38,9 @@ export class PlayerBodyQueue extends PlayerBodyBase {
 
   // private state properties.
   @state() private queueInfo?: IPlayerQueueInfo;
+  @state() private fallbackQueue?: Array<any>;
+  private queueEmptyRetryCount: number = 0;
+  private fallbackContextUri?: string;
 
 
   /**
@@ -89,13 +90,13 @@ export class PlayerBodyQueue extends PlayerBodyBase {
           ${this.alertError ? html`<ha-alert alert-type="error" dismissable @alert-dismissed-clicked=${this.alertErrorClear}>${this.alertError}</ha-alert>` : ""}
           ${this.alertInfo ? html`<ha-alert alert-type="info" dismissable @alert-dismissed-clicked=${this.alertInfoClear}>${this.alertInfo}</ha-alert>` : ""}
           <div class="queue-list">
-            ${(this.queueInfo?.queue || []).length > 0 ? html`
-              ${this.queueInfo?.queue.map((item) => html`
-                <div class="queue-item" @click=${() => this.onClickAction(item.type == 'episode' ? Actions.EpisodePlay : Actions.TrackPlay, item)}>
-                  <div class="queue-item-artwork" style="background-image: url(${item.image_url || (item.type == 'episode' ? (item.images?.[0]?.url || '') : (item.album?.images?.[0]?.url || ''))})"></div>
+            ${(this.getQueueItems() || []).length > 0 ? html`
+              ${this.getQueueItems().map((item) => html`
+                <div class="queue-item" @click=${() => this.onClickAction((item as any).type == 'episode' ? Actions.EpisodePlay : Actions.TrackPlay, item)}>
+                  <div class="queue-item-artwork" style="background-image: url(${(item as any).image_url || ((item as any).type == 'episode' ? ((item as any).images?.[0]?.url || '') : ((item as any).album?.images?.[0]?.url || ''))})"></div>
                   <div class="queue-item-info">
                     <div class="queue-item-title">${item.name || ""}</div>
-                    <div class="queue-item-artist">${item.type == 'episode' ? (item.show?.name || "") : (item.artists?.[0]?.name || "")} • ${this.formatDuration(item.duration_ms)}</div>
+                    <div class="queue-item-artist">${(item as any).type == 'episode' ? ((item as any).show?.name || "") : ((item as any).artists?.[0]?.name || "")} • ${this.formatDuration((item as any).duration_ms)}</div>
                   </div>
                   <ha-icon-button class="queue-item-menu" .path=${mdiPlay} label="Play"></ha-icon-button>
                 </div>
@@ -240,6 +241,94 @@ export class PlayerBodyQueue extends PlayerBodyBase {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
 
+  /**
+   * Returns the queue items from the API, or a context-based fallback if empty.
+   */
+  private getQueueItems(): Array<any> {
+    const apiQueue = this.queueInfo?.queue || [];
+    if (apiQueue.length > 0) {
+      return apiQueue as Array<ITrack>;
+    }
+    return this.fallbackQueue || [];
+  }
+
+
+  /**
+   * Loads a fallback queue list from the current context if the API queue is empty.
+   */
+  private async loadFallbackQueue(): Promise<void> {
+    const contextUri = this.player.attributes.sp_context_uri
+      || (this.player.attributes as any).media_context_content_id
+      || this.player.attributes.sp_playlist_uri
+      || '';
+    if (!contextUri) {
+      this.fallbackQueue = undefined;
+      this.fallbackContextUri = undefined;
+      return;
+    }
+
+    if (this.fallbackContextUri === contextUri && (this.fallbackQueue?.length || 0) > 0) {
+      return;
+    }
+
+    const contextType = getTypeFromSpotifyUri(contextUri) || '';
+    const contextId = getIdFromSpotifyUri(contextUri);
+    if (!contextId) {
+      this.fallbackQueue = undefined;
+      this.fallbackContextUri = undefined;
+      return;
+    }
+
+    try {
+      let tracks: Array<ITrack> = [];
+      const market = this.player.attributes.sp_user_country || null;
+      if (contextType === 'playlist') {
+        const page = await this.spotifyPlusService.GetPlaylistItems(this.player, contextId, null, null, market, null, null, 200);
+        tracks = GetPlaylistPageTracks(page) as Array<ITrack>;
+      } else if (contextType === 'album') {
+        const page = await this.spotifyPlusService.GetAlbumTracks(this.player, contextId, null, null, market, 200);
+        tracks = (page.items || []) as Array<ITrack>;
+      } else {
+        this.fallbackQueue = undefined;
+        this.fallbackContextUri = undefined;
+        return;
+      }
+
+      const currentUri = this.player.attributes.sp_track_uri_origin || this.player.attributes.media_content_id || '';
+      if (currentUri) {
+        const currentIndex = tracks.findIndex((item) => item.uri === currentUri || (item as any).uri_origin === currentUri);
+        if (currentIndex >= 0) {
+          tracks = tracks.slice(currentIndex + 1);
+        }
+      }
+
+      const fallbackImage = (this.player.attributes as any).sp_nowplaying_image_url || this.player.attributes.media_image_url || '';
+      if (fallbackImage) {
+        tracks.forEach((item) => {
+          if (!(item as any).image_url) {
+            (item as any).image_url = fallbackImage;
+          }
+        });
+      }
+
+      if (tracks.length > 0 && (this.queueInfo?.queue || []).length === 0) {
+        this.queueInfo = {
+          currently_playing: null,
+          currently_playing_type: null,
+          queue: tracks as Array<ITrack>,
+          date_last_refreshed: Date.now() / 1000,
+        };
+      }
+
+      this.fallbackQueue = tracks;
+      this.fallbackContextUri = contextUri;
+      this.requestUpdate();
+    } catch {
+      this.fallbackQueue = undefined;
+      this.fallbackContextUri = undefined;
+    }
+  }
+
 
   /**
    * Refreshes the queue items list.  This function can be called when the queue info
@@ -249,6 +338,19 @@ export class PlayerBodyQueue extends PlayerBodyBase {
    * @param item Action arguments.
    */
   public refreshQueueItems(): void {
+
+    const playerId = this.player?.id;
+    if (playerId) {
+      this.store.hass.callService(DOMAIN_SPOTIFYPLUS, 'trigger_scan_interval', {
+        entity_id: playerId,
+      }).catch(() => {
+      }).finally(() => {
+        setTimeout(() => {
+          this.updateActions(this.player, [Actions.GetPlayerQueueInfo]);
+        }, 400);
+      });
+      return;
+    }
 
     this.updateActions(this.player, [Actions.GetPlayerQueueInfo]);
 
@@ -275,28 +377,22 @@ export class PlayerBodyQueue extends PlayerBodyBase {
 
       } else if (action == Actions.EpisodePlay) {
 
-        const deviceIdOverride = await this.store.prepareDevicePlayback(
-          DEVICE_TRANSFER_OVERRIDE_WINDOW_MS,
-          DEVICE_TRANSFER_POST_TRANSFER_WAIT_MS,
-        );
-        await this.spotifyPlusService.Card_PlayMediaBrowserItem(this.player, item, deviceIdOverride);
+        await this.spotifyPlusService.Card_PlayMediaBrowserItem(this.player, item);
         this.progressHide();
+        setTimeout(() => this.refreshQueueItems(), 600);
 
       } else if (action == Actions.TrackPlay) {
 
         // build track uri list from media list.
-        const { uris } = getMediaListTrackUrisRemaining(this.queueInfo?.queue as ITrack[], item);
-        const deviceIdOverride = await this.store.prepareDevicePlayback(
-          DEVICE_TRANSFER_OVERRIDE_WINDOW_MS,
-          DEVICE_TRANSFER_POST_TRANSFER_WAIT_MS,
-        );
+        const { uris } = getMediaListTrackUrisRemaining(this.getQueueItems() as ITrack[], item);
 
         // play the selected track, as well as the remaining tracks.
         // also disable shuffle, as we want to play the selected track first.
-        await this.spotifyPlusService.PlayerMediaPlayTracks(this.player, uris.join(","), null, deviceIdOverride, null, false);
+        await this.spotifyPlusService.PlayerMediaPlayTracks(this.player, uris.join(","), null, null, null, false);
 
         // hide progress indicator.
         this.progressHide();
+        setTimeout(() => this.refreshQueueItems(), 600);
 
       } else {
 
@@ -358,29 +454,51 @@ export class PlayerBodyQueue extends PlayerBodyBase {
 
           // call service to retrieve media item that is currently playing.
           this.spotifyPlusService.GetPlayerQueueInfo(player)
-            .then(result => {
+            .then(async result => {
 
-              // load results, update favorites, and resolve the promise.
-              this.queueInfo = result;
+              try {
+                // load results, update favorites, and resolve the promise.
+                this.queueInfo = result;
+                const queueLength = (this.queueInfo?.queue || []).length;
+                if (queueLength > 0) {
+                  this.fallbackQueue = undefined;
+                  this.fallbackContextUri = undefined;
+                }
+                if (queueLength === 0 && this.player?.isPlaying()) {
+                  this.queueEmptyRetryCount += 1;
+                  if (this.queueEmptyRetryCount <= 2) {
+                    setTimeout(() => this.refreshQueueItems(), 1200);
+                  }
+                } else {
+                  this.queueEmptyRetryCount = 0;
+                }
 
-              //// update the whole player body queue element.
-              //const spcPlayerBodyQueue = closestElement('#elmPlayerBodyQueue', this) as PlayerBodyQueue;
-              //spcPlayerBodyQueue.requestUpdate();
+                if (queueLength === 0) {
+                  await this.loadFallbackQueue();
+                }
 
-              ////this.requestUpdate();
-              //// update display.
-              //setTimeout(() => {
-              //  //this.requestUpdate();
-              //  const spcPlayerBodyQueue = closestElement('#elmPlayerBodyQueue', this) as PlayerBodyQueue;
-              //  spcPlayerBodyQueue.requestUpdate();
-              //  debuglog("updateActions - queueInfo refreshed successfully (setTimeout)");
-              //}, 2000);
+                //// update the whole player body queue element.
+                //const spcPlayerBodyQueue = closestElement('#elmPlayerBodyQueue', this) as PlayerBodyQueue;
+                //spcPlayerBodyQueue.requestUpdate();
 
-              if (debuglog.enabled) {
-                debuglog("updateActions - queueInfo refreshed successfully");
+                ////this.requestUpdate();
+                //// update display.
+                //setTimeout(() => {
+                //  //this.requestUpdate();
+                //  const spcPlayerBodyQueue = closestElement('#elmPlayerBodyQueue', this) as PlayerBodyQueue;
+                //  spcPlayerBodyQueue.requestUpdate();
+                //  debuglog("updateActions - queueInfo refreshed successfully (setTimeout)");
+                //}, 2000);
+
+                if (debuglog.enabled) {
+                  debuglog("updateActions - queueInfo refreshed successfully");
+                }
+
+                resolve(true);
+              } catch (error) {
+                this.alertErrorSet("Queue fallback failed: " + getHomeAssistantErrorMessage(error));
+                resolve(true);
               }
-
-              resolve(true);
 
             })
             .catch(error => {
@@ -430,3 +548,4 @@ export class PlayerBodyQueue extends PlayerBodyBase {
 }
 
 customElements.define('spc-player-body-queue', PlayerBodyQueue);
+

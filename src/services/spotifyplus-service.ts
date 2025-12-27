@@ -275,6 +275,7 @@ export class SpotifyPlusService {
 
       // call the service (no response).
       await this.CallService(serviceRequest);
+      await this.triggerScanInterval(player);
 
     }
     finally {
@@ -601,6 +602,7 @@ export class SpotifyPlusService {
 
       // call the service (no response).
       await this.CallService(serviceRequest);
+      await this.triggerScanInterval(player);
 
     }
     finally {
@@ -643,6 +645,7 @@ export class SpotifyPlusService {
 
       // call the service (no response).
       await this.CallService(serviceRequest);
+      await this.triggerScanInterval(player);
 
     }
     finally {
@@ -1198,7 +1201,7 @@ export class SpotifyPlusService {
   */
   public async GetArtistsFollowed(
     player: MediaPlayer,
-    after: number | null = null, 
+    after: number | null = null,
     limit: number | null = null,
     limit_total: number | null = null,
     sort_result: boolean | null = null,
@@ -3226,6 +3229,27 @@ export class SpotifyPlusService {
     }
   }
 
+  /**
+   * Trigger a SpotifyPlus entity scan to refresh "now playing" state.
+   * 
+   * @param player SpotifyPlus MediaPlayer instance that will process the request.
+   */
+  private async triggerScanInterval(player: MediaPlayer): Promise<void> {
+
+    try {
+      // wait briefly for Spotify to process the play request.
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await this.hass.callService(DOMAIN_SPOTIFYPLUS, 'trigger_scan_interval', {
+        entity_id: player.id,
+      });
+    } catch (error) {
+      if (debuglog.enabled) {
+        debuglog("triggerScanInterval - trigger_scan_interval failed: %s",
+          JSON.stringify(error));
+      }
+    }
+  }
+
 
   /**
    * Set shuffle mode for the specified Spotify Connect device.
@@ -4933,6 +4957,9 @@ export class SpotifyPlusService {
 
         throw new Error("unknown media type \"" + uriType + "\".");
       }
+
+      await this.triggerScanInterval(player);
+
     }
     finally {
     }

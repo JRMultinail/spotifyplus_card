@@ -9,10 +9,6 @@ import { property } from 'lit/decorators.js';
 
 // our imports.
 import { Section } from '../types/section';
-import {
-  DEVICE_TRANSFER_OVERRIDE_WINDOW_MS,
-  DEVICE_TRANSFER_POST_TRANSFER_WAIT_MS
-} from '../constants';
 import { MediaPlayer } from '../model/media-player';
 import { SpotifyPlusService } from '../services/spotifyplus-service';
 import { getHomeAssistantErrorMessage } from '../utils/utils';
@@ -160,13 +156,8 @@ export class FavActionsBase extends AlertUpdatesBase {
       // show progress indicator.
       this.progressShow();
 
-      const deviceIdOverride = await this.store.prepareDevicePlayback(
-        DEVICE_TRANSFER_OVERRIDE_WINDOW_MS,
-        DEVICE_TRANSFER_POST_TRANSFER_WAIT_MS,
-      );
-
       // play media item.
-      await this.spotifyPlusService.Card_PlayMediaBrowserItem(this.player, mediaItem, deviceIdOverride);
+      await this.spotifyPlusService.Card_PlayMediaBrowserItem(this.player, mediaItem);
 
       // show player section.
       this.store.card.SetSection(Section.PLAYER);

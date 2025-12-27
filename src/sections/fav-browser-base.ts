@@ -16,11 +16,7 @@ import {
 } from '@mdi/js';
 
 // our imports.
-import {
-  DEVICE_TRANSFER_OVERRIDE_WINDOW_MS,
-  DEVICE_TRANSFER_POST_TRANSFER_WAIT_MS,
-  DOMAIN_SPOTIFYPLUS
-} from '../constants';
+import { DOMAIN_SPOTIFYPLUS } from '../constants';
 import { sharedStylesFavBrowser } from '../styles/shared-styles-fav-browser.js';
 import { CardConfig } from '../types/card-config';
 import { Section } from '../types/section';
@@ -61,7 +57,7 @@ export class FavBrowserBase extends AlertUpdatesBase {
   @query("#mediaBrowserContentElement", true) protected mediaBrowserContentElement!: HTMLDivElement;
   @query("#filterCriteria", true) protected filterCriteriaElement!: HTMLElement;
 
-    /** Card configuration data. */
+  /** Card configuration data. */
   protected config!: CardConfig;
 
   /** MediaPlayer instance created from the configuration entity id. */
@@ -700,11 +696,6 @@ export class FavBrowserBase extends AlertUpdatesBase {
       // show progress indicator.
       this.progressShow();
 
-      const deviceIdOverride = await this.store.prepareDevicePlayback(
-        DEVICE_TRANSFER_OVERRIDE_WINDOW_MS,
-        DEVICE_TRANSFER_POST_TRANSFER_WAIT_MS,
-      );
-
       if (debuglog.enabled) {
         debuglog("PlayMediaItem \n- shuffleOnPlay = %s\n- player.attributes.shuffle = %s",
           JSON.stringify(this.shuffleOnPlay),
@@ -718,7 +709,7 @@ export class FavBrowserBase extends AlertUpdatesBase {
       }
 
       // play media item.
-      await this.spotifyPlusService.Card_PlayMediaBrowserItem(this.player, mediaItem, deviceIdOverride);
+      await this.spotifyPlusService.Card_PlayMediaBrowserItem(this.player, mediaItem);
 
       // show player section.
       this.store.card.SetSection(Section.PLAYER);
@@ -934,7 +925,7 @@ export class FavBrowserBase extends AlertUpdatesBase {
    * 
    * @param updateCache True (default) to cache media list parameters and results; otherwise, False not to update the cache.
    */
-  protected updatedMediaListOk(updateCache: boolean = true): void { 
+  protected updatedMediaListOk(updateCache: boolean = true): void {
 
     // clear certain error messsages if they are temporary.
     if (this.alertError == ERROR_REFRESH_IN_PROGRESS) {

@@ -63,6 +63,27 @@ export class Player extends AlertUpdatesBase {
   }
 
   /**
+   * Returns a key that changes when the playing track changes so the queue refreshes.
+   */
+  private getQueueRefreshId(): string {
+    const mediaContentId = this.player.attributes.media_content_id || '';
+    const trackUri = this.player.attributes.sp_track_uri_origin || '';
+    const playlistUri = this.player.attributes.sp_playlist_uri || '';
+    const title = this.player.attributes.media_title || '';
+    const artist = this.player.attributes.media_artist || '';
+    if (trackUri) {
+      return `${mediaContentId}|${trackUri}`;
+    }
+    if (playlistUri) {
+      return `${mediaContentId}|${playlistUri}`;
+    }
+    if (title || artist) {
+      return `${mediaContentId}|${title}|${artist}`;
+    }
+    return mediaContentId;
+  }
+
+  /**
    * Invoked on each update to perform rendering tasks. 
    * This method may return any value renderable by lit-html's `ChildPart` (typically a `TemplateResult`). 
    * Setting properties inside this method will *not* trigger the element to update.
@@ -83,6 +104,7 @@ export class Player extends AlertUpdatesBase {
     const trackTitle = this.player.attributes.media_title || 'No Media Playing';
     const artistName = this.player.attributes.media_artist || '';
     const mediaContentId = this.player.attributes.media_content_id || '';
+    const queueRefreshId = this.getQueueRefreshId();
 
     // Check if queue should be hidden
     const hideQueue = this.config.playerControlsHidePlayQueue || false;
@@ -152,7 +174,7 @@ export class Player extends AlertUpdatesBase {
             return html`<spc-player-body-queue 
                     class="player-queue-list" 
                     .store=${this.store} 
-                    .mediaContentId=${mediaContentId} 
+                    .mediaContentId=${queueRefreshId} 
                     id="elmPlayerBodyQueue"
                   ></spc-player-body-queue>`;
           } else {
