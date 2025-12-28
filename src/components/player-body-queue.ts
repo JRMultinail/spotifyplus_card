@@ -1,4 +1,4 @@
-// debug logging.
+﻿// debug logging.
 import Debug from 'debug/src/browser.js';
 import { DEBUG_APP_NAME } from '../constants';
 const debuglog = Debug(DEBUG_APP_NAME + ":player-body-queue");
@@ -39,8 +39,12 @@ export class PlayerBodyQueue extends PlayerBodyBase {
   // private state properties.
   @state() private queueInfo?: IPlayerQueueInfo;
   @state() private fallbackQueue?: Array<any>;
+  @state() private currentItem?: any;
+  @state() private playedHistory: Array<any> = [];
   private queueEmptyRetryCount: number = 0;
   private fallbackContextUri?: string;
+  private lastCurrentUri?: string;
+  private scrollPending: boolean = false;
 
 
   /**
@@ -66,9 +70,17 @@ export class PlayerBodyQueue extends PlayerBodyBase {
 
     // If mediaContentId changed, refresh the queue
     if (changedProperties.has('mediaContentId') && this.mediaContentId) {
+      this.syncCurrentItem();
+      setTimeout(() => {
+        this.scheduleScrollToCurrent();
+      }, 0);
       setTimeout(() => {
         this.refreshQueueItems();
       }, 200);
+    }
+
+    if (changedProperties.has('queueInfo') || changedProperties.has('fallbackQueue') || changedProperties.has('playedHistory')) {
+      this.scheduleScrollToCurrent();
     }
   }
 
@@ -89,18 +101,34 @@ export class PlayerBodyQueue extends PlayerBodyBase {
         <div class="player-body-container-scrollable">
           ${this.alertError ? html`<ha-alert alert-type="error" dismissable @alert-dismissed-clicked=${this.alertErrorClear}>${this.alertError}</ha-alert>` : ""}
           ${this.alertInfo ? html`<ha-alert alert-type="info" dismissable @alert-dismissed-clicked=${this.alertInfoClear}>${this.alertInfo}</ha-alert>` : ""}
-          <div class="queue-list">
-            ${(this.getQueueItems() || []).length > 0 ? html`
-              ${this.getQueueItems().map((item) => html`
-                <div class="queue-item" @click=${() => this.onClickAction((item as any).type == 'episode' ? Actions.EpisodePlay : Actions.TrackPlay, item)}>
-                  <div class="queue-item-artwork" style="background-image: url(${(item as any).image_url || ((item as any).type == 'episode' ? ((item as any).images?.[0]?.url || '') : ((item as any).album?.images?.[0]?.url || ''))})"></div>
-                  <div class="queue-item-info">
-                    <div class="queue-item-title">${item.name || ""}</div>
-                    <div class="queue-item-artist">${(item as any).type == 'episode' ? ((item as any).show?.name || "") : ((item as any).artists?.[0]?.name || "")} • ${this.formatDuration((item as any).duration_ms)}</div>
+                    <div class="queue-list">
+            ${(this.getQueueDisplayItems() || []).length > 0 ? html`
+              ${this.getQueueDisplayItems().map((item) => {
+                const isCurrent = (item as any).__isCurrent;
+                const artist = (item as any).type == 'episode'
+                  ? ((item as any).show?.name || "")
+                  : ((item as any).artists?.[0]?.name || "");
+                const duration = this.formatDuration((item as any).duration_ms);
+                return html`
+                  <div class="queue-item ${isCurrent ? 'queue-item-current' : ''}"
+                       data-current=${isCurrent ? 'true' : 'false'}
+                       @click=${() => this.onClickAction((item as any).type == 'episode' ? Actions.EpisodePlay : Actions.TrackPlay, item)}>
+                    <div class="queue-item-artwork" style="background-image: url(${(item as any).image_url || ((item as any).type == 'episode' ? ((item as any).images?.[0]?.url || '') : ((item as any).album?.images?.[0]?.url || ''))})"></div>
+                    <div class="queue-item-info">
+                      <div class="queue-item-title">${item.name || ""}</div>
+                      <div class="queue-item-artist">${artist}${duration ? ` - ${duration}` : ""}</div>
+                    </div>
+                    ${isCurrent ? html`
+                      <div class="queue-now-playing-bars" aria-hidden="true">
+                        <div class="bar"></div>
+                        <div class="bar"></div>
+                        <div class="bar"></div>
+                        <div class="bar"></div>
+                      </div>
+                    ` : html`<ha-icon-button class="queue-item-menu" .path=${mdiPlay} label="Play"></ha-icon-button>`}
                   </div>
-                  <ha-icon-button class="queue-item-menu" .path=${mdiPlay} label="Play"></ha-icon-button>
-                </div>
-              `)}
+                `;
+              })}
             ` : html`
               <div class="queue-empty">No items in queue</div>
             `}
@@ -152,6 +180,10 @@ export class PlayerBodyQueue extends PlayerBodyBase {
           background-color: rgba(255, 255, 255, 0.1);
         }
 
+        .queue-item-current {
+          background-color: rgba(255, 255, 255, 0.12);
+        }
+
         .queue-item-artwork {
           width: 48px;
           height: 48px;
@@ -198,6 +230,34 @@ export class PlayerBodyQueue extends PlayerBodyBase {
           opacity: 1;
         }
 
+        .queue-now-playing-bars {
+          display: flex;
+          align-items: flex-end;
+          gap: 2px;
+          width: 18px;
+          height: 18px;
+        }
+
+        .queue-now-playing-bars .bar {
+          width: 3px;
+          height: 6px;
+          background-color: #ffffff;
+          opacity: 0.85;
+          animation: queueBarBounce 1s infinite ease-in-out;
+        }
+
+        .queue-now-playing-bars .bar:nth-child(2) {
+          animation-delay: 0.15s;
+        }
+
+        .queue-now-playing-bars .bar:nth-child(3) {
+          animation-delay: 0.3s;
+        }
+
+        .queue-now-playing-bars .bar:nth-child(4) {
+          animation-delay: 0.45s;
+        }
+
         .queue-empty {
           display: flex;
           align-items: center;
@@ -227,6 +287,16 @@ export class PlayerBodyQueue extends PlayerBodyBase {
           vertical-align: top;
           padding: 0px;
         }
+
+        @keyframes queueBarBounce {
+          0%,
+          100% {
+            height: 5px;
+          }
+          50% {
+            height: 16px;
+          }
+        }
       `
     ];
   }
@@ -242,16 +312,131 @@ export class PlayerBodyQueue extends PlayerBodyBase {
   }
 
   /**
-   * Returns the queue items from the API, or a context-based fallback if empty.
+   * Builds a queue item representing the currently playing track.
    */
-  private getQueueItems(): Array<any> {
-    const apiQueue = this.queueInfo?.queue || [];
-    if (apiQueue.length > 0) {
-      return apiQueue as Array<ITrack>;
+  private buildCurrentItem(): any | undefined {
+    const attrs = this.player?.attributes;
+    if (!attrs) {
+      return undefined;
     }
-    return this.fallbackQueue || [];
+
+    const uri = attrs.sp_track_uri_origin || attrs.media_content_id || '';
+    if (!uri) {
+      return undefined;
+    }
+
+    const imageUrl = (attrs as any).sp_nowplaying_image_url || attrs.media_image_url || '';
+    const durationMs = attrs.media_duration ? Math.round(attrs.media_duration * 1000) : undefined;
+
+    return {
+      type: 'track',
+      uri: attrs.media_content_id || uri,
+      uri_origin: attrs.sp_track_uri_origin || uri,
+      name: attrs.media_title || '',
+      artists: [{ name: attrs.media_artist || '' }],
+      duration_ms: durationMs,
+      image_url: imageUrl,
+      album: imageUrl ? { images: [{ url: imageUrl }] } : undefined,
+    };
   }
 
+  /**
+   * Syncs the current item and tracks played history.
+   */
+  private syncCurrentItem(): void {
+    const nextCurrent = this.buildCurrentItem();
+    const nextUri = nextCurrent?.uri_origin || nextCurrent?.uri;
+    if (!nextUri) {
+      return;
+    }
+
+    if (this.lastCurrentUri && this.currentItem && this.lastCurrentUri !== nextUri) {
+      const history = [this.currentItem, ...this.playedHistory];
+      const deduped: Array<any> = [];
+      const seen = new Set<string>();
+      for (const item of history) {
+        const uri = (item as any)?.uri_origin || (item as any)?.uri;
+        if (!uri || seen.has(uri)) {
+          continue;
+        }
+        seen.add(uri);
+        deduped.push(item);
+        if (deduped.length >= 50) {
+          break;
+        }
+      }
+      this.playedHistory = deduped;
+    }
+
+    this.currentItem = nextCurrent;
+    this.lastCurrentUri = nextUri;
+  }
+
+  /**
+   * Returns queue items to display, marking the current item.
+   */
+  private getQueueDisplayItems(): Array<any> {
+    const currentUri = this.lastCurrentUri;
+    if (!currentUri) {
+      return [];
+    }
+
+    if ((this.fallbackQueue?.length || 0) > 0) {
+      const baseItems = [...(this.fallbackQueue || [])];
+      const hasCurrent = baseItems.some((item) => {
+        const uri = (item as any).uri_origin || (item as any).uri;
+        return uri === currentUri;
+      });
+      if (!hasCurrent && this.currentItem) {
+        baseItems.unshift(this.currentItem);
+      }
+      return baseItems.map((item) => {
+        const uri = (item as any).uri_origin || (item as any).uri;
+        return { ...item, __isCurrent: uri === currentUri };
+      });
+    }
+
+    const items: Array<any> = [];
+    if (this.playedHistory.length > 0) {
+      items.push(...this.playedHistory);
+    }
+    if (this.currentItem) {
+      items.push(this.currentItem);
+    }
+    if ((this.queueInfo?.queue || []).length > 0) {
+      items.push(...this.queueInfo!.queue);
+    }
+
+    return items.map((item) => {
+      const uri = (item as any).uri_origin || (item as any).uri;
+      return { ...item, __isCurrent: uri === currentUri };
+    });
+  }
+
+  /**
+   * Returns queue items to use for playback actions.
+   */
+  private getQueuePlayableItems(): Array<any> {
+    return this.getQueueDisplayItems();
+  }
+
+  /**
+   * Scrolls the list so the current item is visible at the top.
+   */
+  private scheduleScrollToCurrent(): void {
+    if (this.scrollPending) {
+      return;
+    }
+    this.scrollPending = true;
+    requestAnimationFrame(() => {
+      this.scrollPending = false;
+      const container = this.shadowRoot?.querySelector('.player-body-container-scrollable') as HTMLElement | null;
+      const current = container?.querySelector('[data-current="true"]') as HTMLElement | null;
+      if (container && current) {
+        container.scrollTop = current.offsetTop;
+      }
+    });
+  }
 
   /**
    * Loads a fallback queue list from the current context if the API queue is empty.
@@ -292,14 +477,6 @@ export class PlayerBodyQueue extends PlayerBodyBase {
         this.fallbackQueue = undefined;
         this.fallbackContextUri = undefined;
         return;
-      }
-
-      const currentUri = this.player.attributes.sp_track_uri_origin || this.player.attributes.media_content_id || '';
-      if (currentUri) {
-        const currentIndex = tracks.findIndex((item) => item.uri === currentUri || (item as any).uri_origin === currentUri);
-        if (currentIndex >= 0) {
-          tracks = tracks.slice(currentIndex + 1);
-        }
       }
 
       const fallbackImage = (this.player.attributes as any).sp_nowplaying_image_url || this.player.attributes.media_image_url || '';
@@ -384,7 +561,7 @@ export class PlayerBodyQueue extends PlayerBodyBase {
       } else if (action == Actions.TrackPlay) {
 
         // build track uri list from media list.
-        const { uris } = getMediaListTrackUrisRemaining(this.getQueueItems() as ITrack[], item);
+        const { uris } = getMediaListTrackUrisRemaining(this.getQueuePlayableItems() as ITrack[], item);
 
         // play the selected track, as well as the remaining tracks.
         // also disable shuffle, as we want to play the selected track first.
@@ -548,4 +725,7 @@ export class PlayerBodyQueue extends PlayerBodyBase {
 }
 
 customElements.define('spc-player-body-queue', PlayerBodyQueue);
+
+
+
 
