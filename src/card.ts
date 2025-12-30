@@ -1077,6 +1077,12 @@ export class Card extends AlertUpdatesBase {
     // invoke base class method.
     super.connectedCallback();
 
+    // DEBUG: Add click listener to trace all clicks in the card
+    this.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      console.log("CARD CLICK detected:", target.tagName, target.className, target.textContent?.substring(0, 50));
+    }, true);  // capture phase
+
     // add card level event listeners.
     this.addEventListener(PROGRESS_ENDED, this.onProgressEndedEventHandler);
     this.addEventListener(PROGRESS_STARTED, this.onProgressStartedEventHandler);

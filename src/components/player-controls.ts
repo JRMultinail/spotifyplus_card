@@ -48,7 +48,7 @@ const ACTION_FAVORITE = 910000000000;
 const PLAY_QUEUE = 990000000000;
 const DEVICES = 999000000000;
 
-class PlayerControls extends AlertUpdatesBase {
+export class PlayerControls extends AlertUpdatesBase {
 
   // public state properties.
   @property({ attribute: false }) mediaContentId!: string;

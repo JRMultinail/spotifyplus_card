@@ -554,18 +554,23 @@ export class PlayerBodyQueue extends PlayerBodyBase {
 
       } else if (action == Actions.EpisodePlay) {
 
-        await this.spotifyPlusService.Card_PlayMediaBrowserItem(this.player, item);
+        // if a device was recently selected, wait for the transfer to complete before playback.
+        const deviceId = await this.store.prepareDevicePlayback(30000, 500);
+        await this.spotifyPlusService.Card_PlayMediaBrowserItem(this.player, item, deviceId);
         this.progressHide();
         setTimeout(() => this.refreshQueueItems(), 600);
 
       } else if (action == Actions.TrackPlay) {
+
+        // if a device was recently selected, wait for the transfer to complete before playback.
+        const deviceId = await this.store.prepareDevicePlayback(30000, 500);
 
         // build track uri list from media list.
         const { uris } = getMediaListTrackUrisRemaining(this.getQueuePlayableItems() as ITrack[], item);
 
         // play the selected track, as well as the remaining tracks.
         // also disable shuffle, as we want to play the selected track first.
-        await this.spotifyPlusService.PlayerMediaPlayTracks(this.player, uris.join(","), null, null, null, false);
+        await this.spotifyPlusService.PlayerMediaPlayTracks(this.player, uris.join(","), null, deviceId, null, false);
 
         // hide progress indicator.
         this.progressHide();

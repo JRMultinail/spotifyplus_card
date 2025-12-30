@@ -47,32 +47,22 @@ export class MediaBrowserList extends MediaBrowserBase {
               const isDevice = this.mediaItemType === Section.DEVICES;
               const showBars = isDevice ? item.mbi_item.is_playing : (item.mbi_item.is_active && this.store.player.isPlaying());
 
-              if (this.isTouchDevice) {
-                return (html`
-                  <mwc-list-item
-                    hasMeta
-                    class="${this.listItemClass}"
-                    @touchstart=${{handleEvent: () => this.onMediaBrowserItemTouchStart(customEvent(ITEM_SELECTED, item)), passive: true }}
-                    @touchend=${() => this.onMediaBrowserItemTouchEnd(customEvent(ITEM_SELECTED, item))}
-                  >
-                    <div class="row">${this.renderMediaBrowserItem(item, !item.mbi_item.image_url || !this.hideTitle, !this.hideSubTitle, isDevice)}</div>
-                    ${when(showBars, () => html`${this.nowPlayingBars}`)}
-                  </mwc-list-item>
-                `);
-              } else {
-                return (html`
-                  <mwc-list-item
-                    hasMeta
-                    class="${this.listItemClass}"
-                    @click=${() => this.onMediaBrowserItemClick(customEvent(ITEM_SELECTED, item))}
-                    @mousedown=${() => this.onMediaBrowserItemMouseDown()}
-                    @mouseup=${() => this.onMediaBrowserItemMouseUp(customEvent(ITEM_SELECTED, item))}
-                  >
-                    <div class="row">${this.renderMediaBrowserItem(item, !item.mbi_item.image_url || !this.hideTitle, !this.hideSubTitle, isDevice)}</div>
-                    ${when(showBars, () => html`${this.nowPlayingBars}`)}
-                  </mwc-list-item>
-                `);
-              }
+              // Always render both touch and mouse handlers to support hybrid devices
+              // (PCs with touchscreens that also use mouse, tablets with keyboard/mouse, etc.)
+              return (html`
+                <mwc-list-item
+                  hasMeta
+                  class="${this.listItemClass}"
+                  @touchstart=${{handleEvent: () => this.onMediaBrowserItemTouchStart(customEvent(ITEM_SELECTED, item)), passive: true }}
+                  @touchend=${() => this.onMediaBrowserItemTouchEnd(customEvent(ITEM_SELECTED, item))}
+                  @click=${() => this.onMediaBrowserItemClick(customEvent(ITEM_SELECTED, item))}
+                  @mousedown=${() => this.onMediaBrowserItemMouseDown()}
+                  @mouseup=${() => this.onMediaBrowserItemMouseUp(customEvent(ITEM_SELECTED, item))}
+                >
+                  <div class="row">${this.renderMediaBrowserItem(item, !item.mbi_item.image_url || !this.hideTitle, !this.hideSubTitle, isDevice)}</div>
+                  ${when(showBars, () => html`${this.nowPlayingBars}`)}
+                </mwc-list-item>
+              `);
             })()}
           `;
         })}

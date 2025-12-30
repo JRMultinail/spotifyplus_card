@@ -407,6 +407,8 @@ export class SearchBrowser extends FavBrowserBase {
    */
   protected override onItemSelected(args: CustomEvent) {
 
+    console.log("SEARCH onItemSelected - item clicked:", args.detail?.name, args.detail?.type);
+
     if (debuglog.enabled) {
       debuglog("onItemSelected - search media item selected:\n%s",
         JSON.stringify(args.detail, null, 2),
@@ -418,12 +420,14 @@ export class SearchBrowser extends FavBrowserBase {
     // if media item is a track or episode, then queue the item if configured to do so.
     if (this.config.searchMediaBrowserQueueSelection) {
       if ((mediaItem.type == 'track') || (mediaItem.type == 'episode')) {
+        console.log("SEARCH onItemSelected - queueing item");
         this.QueueMediaItem(mediaItem);
         return;
       }
     }
 
     // otherwise, just play the media item.
+    console.log("SEARCH onItemSelected - playing item");
     this.PlayMediaItem(mediaItem);
 
   }

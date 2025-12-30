@@ -703,13 +703,24 @@ export class FavBrowserBase extends AlertUpdatesBase {
         );
       }
 
+      // if a device was recently selected, wait for the transfer to complete before playback.
+      // this ensures the device is ready to receive playback commands.
+      console.log("PlayMediaItem - checking for recent device transfer...", {
+        lastDeviceTransferId: this.store.lastDeviceTransferId,
+        lastDeviceTransferAt: this.store.lastDeviceTransferAt,
+        timeSinceTransfer: this.store.lastDeviceTransferAt ? Date.now() - this.store.lastDeviceTransferAt : 'N/A'
+      });
+      const deviceId = await this.store.prepareDevicePlayback(30000, 500);
+      console.log("PlayMediaItem - deviceId resolved:", deviceId);
+
       // enable shuffle prior to play if section is configured to do so and shuffle is currently false.
       if ((this.shuffleOnPlay) && (!this.player.attributes.shuffle)) {
-        await this.spotifyPlusService.PlayerSetShuffleMode(this.player, null, true);
+        await this.spotifyPlusService.PlayerSetShuffleMode(this.player, deviceId, true);
       }
 
-      // play media item.
-      await this.spotifyPlusService.Card_PlayMediaBrowserItem(this.player, mediaItem);
+      // play media item on the selected device (or current device if none selected).
+      console.log("PlayMediaItem - calling Card_PlayMediaBrowserItem with:", { uri: mediaItem?.uri, deviceId });
+      await this.spotifyPlusService.Card_PlayMediaBrowserItem(this.player, mediaItem, deviceId);
 
       // show player section.
       this.store.card.SetSection(Section.PLAYER);

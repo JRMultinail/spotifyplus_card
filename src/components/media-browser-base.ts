@@ -275,8 +275,11 @@ export class MediaBrowserBase extends LitElement {
    */
   protected onMediaBrowserItemClick(event: CustomEvent): boolean {
 
+    console.log("CLICK event fired, mousedownTimestamp:", this.mousedownTimestamp, "item:", event.detail?.name);
+
     // have we already fired the click event?
     if (this.mousedownTimestamp == -1) {
+      console.log("CLICK - already handled, returning early");
       return true;
     }
 
@@ -288,6 +291,7 @@ export class MediaBrowserBase extends LitElement {
     const duration = Date.now() - this.mousedownTimestamp;
     this.mousedownTimestamp = -1;
 
+    console.log("CLICK - duration:", duration, "dispatching ITEM_SELECTED");
     if (duration < 1000) {
       return this.dispatchEvent(customEvent(ITEM_SELECTED, event.detail));
     } else {
@@ -310,6 +314,8 @@ export class MediaBrowserBase extends LitElement {
    * events, which will increase performance as well as remove the warning message.
    */
   protected onMediaBrowserItemMouseDown(): boolean {
+
+    console.log("MOUSEDOWN event fired");
 
     // store the current time (in milliseconds) so that we can calculate
     // the duration in the "click" event (occurs after a mouseup event).
@@ -335,8 +341,11 @@ export class MediaBrowserBase extends LitElement {
    */
   protected onMediaBrowserItemMouseUp(event: CustomEvent): boolean {
 
+    console.log("MOUSEUP event fired, mousedownTimestamp:", this.mousedownTimestamp, "item:", event.detail?.name);
+
     // have we already fired the click event?
     if (this.mousedownTimestamp == -1) {
+      console.log("MOUSEUP - already handled, returning early");
       return true;
     }
 
@@ -348,6 +357,7 @@ export class MediaBrowserBase extends LitElement {
     const duration = Date.now() - this.mousedownTimestamp;
     this.mousedownTimestamp = -1;
 
+    console.log("MOUSEUP - duration:", duration, "dispatching ITEM_SELECTED");
     if (duration < 1000) {
       return this.dispatchEvent(customEvent(ITEM_SELECTED, event.detail));
     } else {

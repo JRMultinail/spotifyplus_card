@@ -40,30 +40,21 @@ export class MediaBrowserIcons extends MediaBrowserBase {
           ${(() => {
             const isDevice = this.mediaItemType === Section.DEVICES;
 
-            if (this.isTouchDevice) {
-              return (html`
-                <ha-control-button
-                  class="button"
-                  isTouchDevice="${this.isTouchDevice}"
-                  @touchstart=${{handleEvent: () => this.onMediaBrowserItemTouchStart(customEvent(ITEM_SELECTED, item)), passive: true }}
-                  @touchend=${() => this.onMediaBrowserItemTouchEnd(customEvent(ITEM_SELECTED, item))}
-                >
-                  ${this.renderMediaBrowserItem(item, !item.mbi_item.image_url || !this.hideTitle, !this.hideSubTitle, isDevice)}
-                </ha-control-button>
-              `);
-            } else {
-              return (html`
-                <ha-control-button
-                  class="button"
-                  isTouchDevice="${this.isTouchDevice}"
-                  @click=${() => this.onMediaBrowserItemClick(customEvent(ITEM_SELECTED, item))}
-                  @mousedown=${() => this.onMediaBrowserItemMouseDown()}
-                  @mouseup=${() => this.onMediaBrowserItemMouseUp(customEvent(ITEM_SELECTED, item))}
-                >
-                  ${this.renderMediaBrowserItem(item, !item.mbi_item.image_url || !this.hideTitle, !this.hideSubTitle, isDevice)}
-                </ha-control-button>
-              `);
-            }
+            // Always render both touch and mouse handlers to support hybrid devices
+            // (PCs with touchscreens that also use mouse, tablets with keyboard/mouse, etc.)
+            return (html`
+              <ha-control-button
+                class="button"
+                isTouchDevice="${this.isTouchDevice}"
+                @touchstart=${{handleEvent: () => this.onMediaBrowserItemTouchStart(customEvent(ITEM_SELECTED, item)), passive: true }}
+                @touchend=${() => this.onMediaBrowserItemTouchEnd(customEvent(ITEM_SELECTED, item))}
+                @click=${() => this.onMediaBrowserItemClick(customEvent(ITEM_SELECTED, item))}
+                @mousedown=${() => this.onMediaBrowserItemMouseDown()}
+                @mouseup=${() => this.onMediaBrowserItemMouseUp(customEvent(ITEM_SELECTED, item))}
+              >
+                ${this.renderMediaBrowserItem(item, !item.mbi_item.image_url || !this.hideTitle, !this.hideSubTitle, isDevice)}
+              </ha-control-button>
+            `);
           })()}
         `)}
       </div>

@@ -156,8 +156,11 @@ export class FavActionsBase extends AlertUpdatesBase {
       // show progress indicator.
       this.progressShow();
 
-      // play media item.
-      await this.spotifyPlusService.Card_PlayMediaBrowserItem(this.player, mediaItem);
+      // if a device was recently selected, wait for the transfer to complete before playback.
+      const deviceId = await this.store.prepareDevicePlayback(30000, 500);
+
+      // play media item on the selected device (or current device if none selected).
+      await this.spotifyPlusService.Card_PlayMediaBrowserItem(this.player, mediaItem, deviceId);
 
       // show player section.
       this.store.card.SetSection(Section.PLAYER);

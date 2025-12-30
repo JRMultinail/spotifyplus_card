@@ -7,9 +7,9 @@ import serve from 'rollup-plugin-serve';
 import json from '@rollup/plugin-json';
 
 const serveopts = {
-  contentBase: ['./dist'],
-  host: '0.0.0.0',
-  port: 5000,
+  contentBase: ['.'],
+  host: '127.0.0.1',
+  port: 5015,
   allowCrossOrigin: true,
   headers: {
     'Access-Control-Allow-Origin': '*',
@@ -31,7 +31,8 @@ const plugins = [
     babelHelpers: 'bundled',
   }),
   process.env.ROLLUP_WATCH && serve(serveopts),
-  !process.env.ROLLUP_WATCH && !process.env.DEV && terser(),
+  // Temporarily disabled terser to keep console.log for debugging
+  // !process.env.ROLLUP_WATCH && !process.env.DEV && terser(),
 ];
 
 export default [
